@@ -79,24 +79,6 @@ fun GameScreen(
                 }
             )
 
-            // Top-Left: PC Controls Quick Helper
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 16.dp, start = 140.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x99181C28))
-                    .border(1.dp, Color(0x4488AACC), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    "⌨️ PC: [A/D] Move  [SPACE] Jump  [Q] Dash  [L-CLICK] Stab  [R-CLICK] Parry  [F] Grab (auto-headbutt)  [E] Heal",
-                    color = Color(0xFFD0DCE8),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
             // Top-Right: Quick Reset / Respawn Button
             Box(
                 modifier = Modifier
