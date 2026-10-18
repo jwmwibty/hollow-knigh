@@ -27,23 +27,24 @@ class DarkRibsRoom : Room(
         spawnX = 140f
         spawnY = 460f
 
-        // Entry ledge
+        // Entry ledge (top at 480f)
         addSlab(RectF(-100f, 480f, 320f, 620f), seed = 201, mossy = false, body = EnvPalette.stoneBody, rim = EnvPalette.stoneLit)
 
-        // Segmented bone stepping platforms
-        addSlab(RectF(400f, 420f, 550f, 455f), seed = 202, mossy = false, body = EnvPalette.boneDark, rim = EnvPalette.boneLit)
-        addSlab(RectF(650f, 330f, 800f, 365f), seed = 203, mossy = false, body = EnvPalette.boneDark, rim = EnvPalette.boneLit)
-        addSlab(RectF(480f, 210f, 630f, 245f), seed = 204, mossy = false, body = EnvPalette.boneDark, rim = EnvPalette.boneLit)
+        // Segmented bone stepping platforms (intervals around 60-74px for effortless jumping)
+        addSlab(RectF(380f, 420f, 530f, 450f), seed = 202, mossy = false, body = EnvPalette.boneDark, rim = EnvPalette.boneLit)
+        addSlab(RectF(600f, 355f, 760f, 385f), seed = 203, mossy = false, body = EnvPalette.boneDark, rim = EnvPalette.boneLit)
+        addSlab(RectF(460f, 280f, 620f, 310f), seed = 204, mossy = false, body = EnvPalette.boneDark, rim = EnvPalette.boneLit)
 
-        // Tall Fossil Rib Tower
-        addSlab(RectF(940f, 280f, 1140f, 620f), seed = 205, mossy = false, body = EnvPalette.boneMid, rim = EnvPalette.boneLit)
+        // Tall Fossil Rib Tower (top lowered from 280f to 320f with intermediate ledge at 400f)
+        addSlab(RectF(820f, 395f, 960f, 425f), seed = 209, mossy = false, body = EnvPalette.boneDark, rim = EnvPalette.boneLit)
+        addSlab(RectF(960f, 320f, 1160f, 620f), seed = 205, mossy = false, body = EnvPalette.boneMid, rim = EnvPalette.boneLit)
 
-        // Floating bone slab
-        addSlab(RectF(1240f, 350f, 1420f, 385f), seed = 206, mossy = false, body = EnvPalette.stoneBody, rim = EnvPalette.stoneLit)
-        addSlab(RectF(1500f, 250f, 1720f, 285f), seed = 207, mossy = false, body = EnvPalette.boneDark, rim = EnvPalette.boneLit)
+        // Floating bone slabs descending to exit
+        addSlab(RectF(1240f, 350f, 1420f, 380f), seed = 206, mossy = false, body = EnvPalette.stoneBody, rim = EnvPalette.stoneLit)
+        addSlab(RectF(1480f, 385f, 1680f, 415f), seed = 207, mossy = false, body = EnvPalette.boneDark, rim = EnvPalette.boneLit)
 
-        // Exit ledge on the far right
-        addSlab(RectF(1780f, 440f, 2200f, 620f), seed = 208, mossy = false, body = EnvPalette.stoneBody, rim = EnvPalette.stoneLit)
+        // Exit ledge on the far right (top at 440f)
+        addSlab(RectF(1760f, 440f, 2200f, 620f), seed = 208, mossy = false, body = EnvPalette.stoneBody, rim = EnvPalette.stoneLit)
 
         // Boundaries
         solid(-100f, -300f, -20f, 750f)

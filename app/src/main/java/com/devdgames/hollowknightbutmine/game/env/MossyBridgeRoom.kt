@@ -32,25 +32,27 @@ class MossyBridgeRoom : Room(
         spawnY = 460f
 
         // --- Collision Platforms (Slabs) ---
-        // Left entry shore
+        // Left entry shore (top at 480f)
         addSlab(RectF(-100f, 480f, 320f, 620f), seed = 101, mossy = true)
 
-        // Stepping stones across the water chasm
-        addSlab(RectF(400f, 440f, 580f, 475f), seed = 102, mossy = true)
-        addSlab(RectF(660f, 370f, 850f, 405f), seed = 103, mossy = true)
-        addSlab(RectF(480f, 280f, 640f, 310f), seed = 104, mossy = true)
+        // Stepping stones across the water chasm (player height 67px + 10% = 74px clearance)
+        addSlab(RectF(380f, 435f, 540f, 465f), seed = 102, mossy = true)
+        addSlab(RectF(600f, 385f, 760f, 415f), seed = 103, mossy = true)
+        addSlab(RectF(480f, 310f, 640f, 340f), seed = 104, mossy = true)
 
         // The High Moss Bridge
-        addSlab(RectF(920f, 340f, 1340f, 380f), seed = 105, mossy = true)
+        addSlab(RectF(840f, 360f, 1340f, 395f), seed = 105, mossy = true)
 
         // Lower water stepping stones
-        addSlab(RectF(1050f, 490f, 1220f, 525f), seed = 106, mossy = true)
+        addSlab(RectF(1020f, 470f, 1200f, 500f), seed = 106, mossy = true)
 
-        // Shrine Plateau on the right
+        // Shrine Plateau on the right (top at 460f)
         addSlab(RectF(1420f, 460f, 2100f, 620f), seed = 107, mossy = true)
 
+        // Stepping stone up to shrine roof
+        addSlab(RectF(1500f, 370f, 1640f, 400f), seed = 109, mossy = true)
         // Upper secret ledge near shrine roof
-        addSlab(RectF(1620f, 240f, 1880f, 270f), seed = 108, mossy = true)
+        addSlab(RectF(1680f, 290f, 1920f, 320f), seed = 108, mossy = true)
 
         // Cave boundaries
         solid(-100f, -300f, -20f, 750f)

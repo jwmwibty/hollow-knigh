@@ -233,6 +233,15 @@ class Player(
             PlayerState.STABBING -> {
                 stateTimer -= dt
                 checkCombatCollisions(enemies)
+
+                // Update horizontal movement according to current input
+                if (inputX != 0f) {
+                    facing = if (inputX > 0) Facing.RIGHT else Facing.LEFT
+                    vx = inputX * moveSpeed * 0.75f // Controlled mobile attack
+                } else {
+                    vx = 0f
+                }
+
                 if (stateTimer <= 0f) {
                     activeHitbox = null
                     state = if (isGrounded) PlayerState.IDLE else PlayerState.FALLING
@@ -241,6 +250,14 @@ class Player(
             PlayerState.GRABBING -> {
                 stateTimer -= dt
                 checkCombatCollisions(enemies)
+
+                if (inputX != 0f) {
+                    facing = if (inputX > 0) Facing.RIGHT else Facing.LEFT
+                    vx = inputX * moveSpeed * 0.65f
+                } else {
+                    vx = 0f
+                }
+
                 if (stateTimer <= 0f && state == PlayerState.GRABBING) {
                     activeHitbox = null
                     state = if (isGrounded) PlayerState.IDLE else PlayerState.FALLING
@@ -273,6 +290,7 @@ class Player(
             }
             PlayerState.PARRYING -> {
                 stateTimer -= dt
+                vx = 0f // Locked during parry stand
                 checkParryCollision(enemies, onParryTriggered)
                 if (stateTimer <= 0f) {
                     state = if (isGrounded) PlayerState.IDLE else PlayerState.FALLING
@@ -391,11 +409,13 @@ class Player(
     }
 
     private fun applyCollision(dt: Float, platforms: List<RectF>) {
-        // Horizontal move
+        // Horizontal move (only collide with thick solid walls/blocks, not thin jump-through slabs)
         x += vx * dt
         var box = getBoundingBox()
         for (plat in platforms) {
-            if (RectF.intersects(box, plat)) {
+            // Slabs/floating platforms are thin (< 45px tall); don't block horizontal running/jumping through them
+            val isThinLedge = plat.height() < 48f
+            if (!isThinLedge && RectF.intersects(box, plat)) {
                 if (vx > 0) {
                     x = plat.left - width / 2
                 } else if (vx < 0) {
@@ -407,16 +427,20 @@ class Player(
         }
 
         // Vertical move
+        val prevBottom = box.bottom
         y += vy * dt
         box = getBoundingBox()
         isGrounded = false
         for (plat in platforms) {
+            val isThinLedge = plat.height() < 48f
             if (RectF.intersects(box, plat)) {
-                if (vy > 0 && box.bottom - (vy * dt) <= plat.top + 12f) {
+                if (vy > 0 && prevBottom <= plat.top + 14f) {
+                    // Landing on top surface of platform/slab
                     y = plat.top
                     vy = 0f
                     isGrounded = true
-                } else if (vy < 0) {
+                } else if (vy < 0 && !isThinLedge) {
+                    // Bonk head on thick solid ceiling only (jump straight through thin floating slabs)
                     y = plat.bottom + height
                     vy = 0f
                 }

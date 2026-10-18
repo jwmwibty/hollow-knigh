@@ -29,16 +29,21 @@ class RuinedSanctuaryRoom : Room(
         spawnX = 140f
         spawnY = 460f
 
-        // --- Ground Colonnade Floor ---
+        // --- Ground Colonnade Floor (top at 480f) ---
         addSlab(RectF(-100f, 480f, 2300f, 620f), seed = 301, mossy = true)
 
-        // --- Upper Balcony (Second Story) ---
-        addSlab(RectF(350f, 320f, 850f, 355f), seed = 302, mossy = true)
-        addSlab(RectF(1100f, 320f, 1600f, 355f), seed = 303, mossy = true)
+        // Stepping ledges bridging floor (480f) up to balcony (340f) -> ~70px interval
+        addSlab(RectF(180f, 410f, 320f, 440f), seed = 306, mossy = true)
 
-        // Mid-air stepping ledges
-        addSlab(RectF(920f, 230f, 1030f, 260f), seed = 304, mossy = true)
-        addSlab(RectF(1750f, 260f, 1920f, 290f), seed = 305, mossy = true)
+        // --- Upper Balcony (Second Story at 340f) ---
+        addSlab(RectF(350f, 340f, 850f, 375f), seed = 302, mossy = true)
+        addSlab(RectF(1100f, 340f, 1600f, 375f), seed = 303, mossy = true)
+
+        // Stepping stones bridging between balconies and ascending to high ledges (~74px delta)
+        addSlab(RectF(900f, 355f, 1050f, 385f), seed = 307, mossy = true)
+        addSlab(RectF(920f, 275f, 1030f, 305f), seed = 304, mossy = true)
+        addSlab(RectF(1640f, 350f, 1780f, 380f), seed = 308, mossy = true)
+        addSlab(RectF(1750f, 275f, 1920f, 305f), seed = 305, mossy = true)
 
         // Boundaries
         solid(-100f, -350f, -20f, 750f)

@@ -45,11 +45,15 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 return true
             }
             KeyEvent.KEYCODE_SPACE -> {
-                world.player.jump()
+                if (event.repeatCount == 0) {
+                    world.player.jump()
+                }
                 return true
             }
             KeyEvent.KEYCODE_Q -> {
-                world.player.dash()
+                if (event.repeatCount == 0) {
+                    world.player.dash()
+                }
                 return true
             }
             KeyEvent.KEYCODE_E -> {
@@ -57,7 +61,9 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 return true
             }
             KeyEvent.KEYCODE_F -> {
-                world.player.grab()
+                if (event.repeatCount == 0) {
+                    world.player.grab()
+                }
                 return true
             }
         }
