@@ -133,7 +133,50 @@ class RuinedSanctuaryRoom : Room(
         paint.strokeWidth = 18f
         canvas.drawPath(grandCathedral, paint)
 
+        // Layered ruined towers behind the cathedral arches.
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(8, 24, 29)
+        for (i in 0..15) {
+            val tx = i * 300f + 20f
+            val towerH = 150f + ((i * 41) % 180)
+            canvas.drawRect(tx, 480f - towerH, tx + 78f, 520f, paint)
+            canvas.drawPath(Path().apply {
+                moveTo(tx - 8f, 480f - towerH)
+                lineTo(tx + 39f, 450f - towerH)
+                lineTo(tx + 86f, 480f - towerH)
+                close()
+            }, paint)
+
+            // Narrow, faint windows in each distant tower.
+            paint.color = Color.argb(70, 83, 211, 194)
+            for (w in 0..2) {
+                val wx = tx + 13f + w * 22f
+                canvas.drawRoundRect(wx, 500f - towerH, wx + 7f, 520f - towerH, 3f, 3f, paint)
+            }
+            paint.color = Color.rgb(8, 24, 29)
+        }
+
+        // A few distant hanging banners add scale to the old royal hall.
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2f
+        paint.color = Color.rgb(24, 55, 56)
+        for (i in 0..7) {
+            val bx = i * 560f + 160f
+            canvas.drawLine(bx, 90f, bx, 190f, paint)
+            paint.style = Paint.Style.FILL
+            val banner = Path()
+            banner.moveTo(bx, 105f)
+            banner.lineTo(bx + 27f, 113f)
+            banner.lineTo(bx + 21f, 158f)
+            banner.lineTo(bx + 11f, 147f)
+            banner.lineTo(bx, 160f)
+            banner.close()
+            canvas.drawPath(banner, paint)
+            paint.style = Paint.Style.STROKE
+        }
+
         // Gothic Windows glow
+        paint.style = Paint.Style.FILL
         for (i in 0..16) {
             val wx = i * 280f + 60f
             EnvArt.bloom(canvas, paint, wx, 220f, 45f, 85f, EnvArt.glowTeal, 45)
