@@ -292,12 +292,7 @@ fun ActionButton(
                 tint = if (isPressed) accentColor else Color(0xFFEAF1F7),
                 modifier = Modifier.size(size * 0.43f)
             )
-            Text(
-                subLabel,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isPressed) accentColor else Color(0xFFCCCCCC)
-            )
+            // Icon-only controls: keep the button face clean and readable.
         }
     }
 }
@@ -349,12 +344,7 @@ fun ControlButton(
                 tint = if (effectivePressed) accentColor else Color(0xFFEAF1F7),
                 modifier = Modifier.size(size * 0.43f)
             )
-            Text(
-                subLabel,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (effectivePressed) accentColor else Color(0xFFAAAAAA)
-            )
+            // Icon-only controls: keep the button face clean and readable.
         }
     }
 }
