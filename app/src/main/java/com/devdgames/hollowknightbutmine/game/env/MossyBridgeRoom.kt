@@ -139,6 +139,33 @@ class MossyBridgeRoom : Room(
             canvas.drawRoundRect(archX, 80f, archX + 110f, 650f, 24f, 24f, paint)
         }
 
+        // Distant stalagmite skyline: layered shapes make the cavern feel deep.
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(5, 28, 27)
+        for (i in 0..22) {
+            val sx = i * 205f - 80f
+            val peak = 220f + ((i * 47) % 170)
+            val rock = Path()
+            rock.moveTo(sx, 620f)
+            rock.lineTo(sx + 42f, peak + 70f)
+            rock.lineTo(sx + 82f, peak)
+            rock.lineTo(sx + 126f, peak + 95f)
+            rock.lineTo(sx + 168f, 620f)
+            rock.close()
+            canvas.drawPath(rock, paint)
+        }
+
+        // Giant fungal caps and glowing stems in the far distance.
+        for (i in 0..10) {
+            val mx = i * 405f + 115f
+            val my = 370f + ((i * 31) % 100)
+            paint.color = Color.rgb(8, 43, 39)
+            canvas.drawRoundRect(mx - 5f, my, mx + 5f, 600f, 5f, 5f, paint)
+            canvas.drawOval(mx - 42f, my - 20f, mx + 42f, my + 12f, paint)
+            paint.color = Color.argb(42, 73, 238, 203)
+            canvas.drawOval(mx - 30f, my - 17f, mx + 30f, my + 3f, paint)
+        }
+
         // Bioluminescent background cavern blooms
         for (i in 0..12) {
             val ox = i * 360f + 40f
