@@ -76,6 +76,7 @@ class Player(
     }
 
     fun jump() {
+        if (state == PlayerState.DEAD) return
         if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING ||
             state == PlayerState.GRABBING || state == PlayerState.HOLDING_ENEMY) return
 
@@ -102,6 +103,7 @@ class Player(
     }
 
     fun dash() {
+        if (state == PlayerState.DEAD) return
         if (dashCooldown > 0f) return
         if (!isGrounded && !canDashInAir) return
         if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
@@ -122,6 +124,7 @@ class Player(
      * Safety Pin Quick Stab (Basic Attack)
      */
     fun stab() {
+        if (state == PlayerState.DEAD) return
         if (state == PlayerState.DASHING || state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
         state = PlayerState.STABBING
         stateTimer = 0.22f
@@ -137,6 +140,7 @@ class Player(
      * Safety Pin Grab (Hooking enemy with the clasp)
      */
     fun grab() {
+        if (state == PlayerState.DEAD) return
         // While an enemy is being pulled in, don't restart the grab or require another press.
         if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
         if (state == PlayerState.DASHING) return
@@ -175,6 +179,7 @@ class Player(
      * Safety Pin Parry: Block incoming enemy hits with the pin's clasp
      */
     fun startParry() {
+        if (state == PlayerState.DEAD) return
         if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
         state = PlayerState.PARRYING
         stateTimer = 0.72f // More forgiving parry window
@@ -185,7 +190,9 @@ class Player(
      * Focus / Heal using Soul
      */
     fun startHeal() {
-        if (soul >= 33 && currentMasks < maxMasks && isGrounded && state != PlayerState.HOLDING_ENEMY) {
+        // Focus consumes one Soul chunk (33) to restore exactly one mask.
+        if (state != PlayerState.DEAD && soul >= 33 && currentMasks < maxMasks &&
+            isGrounded && state != PlayerState.HOLDING_ENEMY && state != PlayerState.HEADBUTTING) {
             state = PlayerState.HEALING
             healCharge = 0f
             vx = 0f
@@ -242,6 +249,14 @@ class Player(
 
         // Handle states and action timers
         when (state) {
+            PlayerState.DEAD -> {
+                // Freeze completely during the brief death pause.
+                vx = 0f
+                vy = 0f
+                activeHitbox = null
+                grabbedEnemy?.isGrabbed = false
+                grabbedEnemy = null
+            }
             PlayerState.DASHING -> {
                 stateTimer -= dt
                 if (stateTimer <= 0f) {
@@ -350,7 +365,7 @@ class Player(
         }
 
         // Apply movement physics (unless dashing or healing)
-        if (state != PlayerState.DASHING && state != PlayerState.HEALING) {
+        if (state != PlayerState.DASHING && state != PlayerState.HEALING && state != PlayerState.DEAD) {
             vy += gravity * dt
             if (vy > 950f) vy = 950f
         }
@@ -368,7 +383,7 @@ class Player(
         }
 
         // Touch damage from active enemy if not parrying/invincible
-        if (invincibilityTimer <= 0f && state != PlayerState.PARRYING) {
+        if (invincibilityTimer <= 0f && state != PlayerState.PARRYING && state != PlayerState.DEAD) {
             val playerBox = getBoundingBox()
             for (enemy in enemies) {
                 if (enemy.isAlive && !enemy.isGrabbed && !enemy.isStunned) {
