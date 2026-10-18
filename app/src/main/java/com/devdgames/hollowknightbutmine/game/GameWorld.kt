@@ -3,13 +3,20 @@ package com.devdgames.hollowknightbutmine.game
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
-import com.devdgames.hollowknightbutmine.game.env.DarkRibsRoom
-import com.devdgames.hollowknightbutmine.game.env.MossyBridgeRoom
-import com.devdgames.hollowknightbutmine.game.env.Room
-import com.devdgames.hollowknightbutmine.game.env.RuinedSanctuaryRoom
-import kotlin.random.Random
+import android.graphics.Typeface
+import com.devdgames.hollowknightbutmine.game.env.AreaScene
+import com.devdgames.hollowknightbutmine.game.env.Backdrops
+import com.devdgames.hollowknightbutmine.game.env.EnemySpawnPoint
+import com.devdgames.hollowknightbutmine.game.world.AreaDef
+import com.devdgames.hollowknightbutmine.game.world.WorldAtlas
+import com.devdgames.hollowknightbutmine.game.world.WorldLayout
 import kotlin.math.abs
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.random.Random
 
 /**
  * Dust / Spark / Hit particle
@@ -34,166 +41,200 @@ data class Particle(
 }
 
 /**
- * GameWorld manages map rooms, platforms, player, enemies, camera, combat feedback, and particles.
+ * The kingdom.
+ *
+ * One continuous 2D world assembled from the authored areas in [WorldAtlas]: a surface
+ * town over a central hub, with branches climbing, descending and spreading sideways
+ * into thirteen distinct regions. GameWorld owns the player, enemies, benches, camera,
+ * area transitions, hazards, particles, HUD and the map overlay.
  */
 class GameWorld {
-    val player = Player(x = 140f, y = 460f)
+    // ------------------------------------------------------------------ world data
+    val layout = WorldLayout(WorldAtlas.areas)
+    val scenes: List<AreaScene> = layout.grids.map { AreaScene(it, layout) }
+    private val sceneById: Map<String, AreaScene> = scenes.associateBy { it.def.id }
+    private val solids = SpatialGrid(320f)
+    private val hazards = SpatialGrid(320f)
+    private val fillers = ArrayList<RectF>()
+    private val worldBounds = RectF(
+        layout.minCol * AreaDef.TILE, layout.minRow * AreaDef.TILE,
+        layout.maxCol * AreaDef.TILE, layout.maxRow * AreaDef.TILE
+    )
+
+    // ------------------------------------------------------------------ actors
+    val player: Player
     val enemies = mutableListOf<Enemy>()
     val projectiles = mutableListOf<Projectile>()
-    val platforms = mutableListOf<RectF>()
     val particles = mutableListOf<Particle>()
+    val benches = ArrayList<Bench>()
 
-    // The map is authored as three connected biomes, but played as one continuous world.
-    private data class RoomPlacement(val room: Room, val offsetX: Float)
-    private val rooms = mutableMapOf<String, Room>()
-    private val roomPlacements = ArrayList<RoomPlacement>()
-    private val worldHazards = ArrayList<RectF>()
-    var currentRoom: Room? = null
-    private var activeRoomId: String? = null
-    private var worldLeft = -100f
-    private var worldRight = 13800f
+    private class SpawnRecord(val areaId: String, val point: EnemySpawnPoint, var enemy: Enemy?)
+    private val spawnRecords = ArrayList<SpawnRecord>()
+
+    // ------------------------------------------------------------------ progress
+    val discovered = LinkedHashSet<String>()
+    var currentScene: AreaScene? = null
+        private set
+    private var currentBench: Bench? = null
+    private val worldSpawnX: Float
+    private val worldSpawnY: Float
+    private var lastSafeX = 0f
+    private var lastSafeY = 0f
+    private var safeTimer = 0f
+
+    // ------------------------------------------------------------------ presentation
     var gameTime = 0f
     private var deathTimer = 0f
+    private var areaCooldown = 0f
+    private var titleName = ""
+    private var titleSub = ""
+    private var titleTimer = 0f
+    private var titleDuration = 0f
+    private var fadeTimer = 0f
+    private var hurtFlash = 0f
+    var mapOpen = false
+        private set
+    private val worldMap = WorldMap(layout)
+    private var backdropScene: AreaScene? = null
+    private var fadeIsDip = false
 
-    // Camera viewport offset
+    // Camera: top-left corner of the view, in world units. `zoom` maps world → screen.
     var cameraX = 0f
     var cameraY = 0f
+    private var camTargetY = 0f
+    private var zoom = 1f
+    private var viewW = 1200f
+    private var viewH = DESIGN_VIEW_H
+    private val view = RectF()
 
-    // Screen Shake for heavy hits (Headbutt / Parry)
+    // Screen shake for heavy hits (Headbutt / Parry)
     var screenShakeTime = 0f
     var screenShakeIntensity = 0f
 
-    // Combat banner message ("PARRIED!", "HEADBUTT!", etc.)
+    // Kept for API compatibility with the input layer; feedback is visual-only.
     var combatMessage = ""
     var combatMessageTimer = 0f
     var combatMessageColor = Color.WHITE
 
+    private val serif: Typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
+    private val scratchPath = Path()
+
     init {
-        registerRooms()
-        loadContinuousWorld()
+        // Collision: every area's solids and ledges plus the rock that fills the gaps between areas.
+        for (s in scenes) {
+            solids.addAll(s.solidRects)
+            solids.addAll(s.ledgeRects)
+            hazards.addAll(s.hazardRects)
+            for (b in s.benchSpots) benches.add(Bench(s.def.id, b[0], b[1]))
+            for (p in s.enemySpawns) spawnRecords.add(SpawnRecord(s.def.id, p, null))
+        }
+        for (f in layout.fillerRects(12)) {
+            val r = RectF(f.col * AreaDef.TILE, f.row * AreaDef.TILE, f.right * AreaDef.TILE, f.bottom * AreaDef.TILE)
+            fillers.add(r)
+            solids.add(r)
+        }
+
+        val spawnScene = scenes.first { !it.spawnX.isNaN() }
+        worldSpawnX = spawnScene.spawnX
+        worldSpawnY = spawnScene.spawnY
+        player = Player(x = worldSpawnX, y = worldSpawnY)
+        lastSafeX = worldSpawnX
+        lastSafeY = worldSpawnY
+
+        populateEnemies()
+        enterArea(spawnScene, announce = true)
+        cameraX = player.x - 600f
+        cameraY = player.y - DESIGN_VIEW_H * 0.6f
+        camTargetY = cameraY
     }
 
-    private fun registerRooms() {
-        val r1 = MossyBridgeRoom()
-        r1.build()
-        rooms[r1.id] = r1
+    // ===================================================================== population
 
-        val r2 = DarkRibsRoom()
-        r2.build()
-        rooms[r2.id] = r2
-
-        val r3 = RuinedSanctuaryRoom()
-        r3.build()
-        rooms[r3.id] = r3
+    private fun makeEnemy(p: EnemySpawnPoint): Enemy {
+        val enemy = when (p.char) {
+            'c' -> Enemy(p.x, p.y, type = EnemyType.CRAWLER)
+            'f' -> Enemy(p.x, p.y, type = EnemyType.FLYER)
+            'p' -> Enemy(p.x, p.y, type = EnemyType.SPITTER)
+            'h' -> Enemy(p.x, p.y, type = EnemyType.SHIELDER)
+            'm' -> Enemy(p.x, p.y, type = EnemyType.MOSS_CHARGER)
+            'M' -> Enemy(p.x, p.y, type = EnemyType.MOSS_CHARGER, isBoss = true)
+            '1' -> Enemy(p.x, p.y, type = EnemyType.BROODMOTHER, isBoss = true)
+            '2' -> Enemy(p.x, p.y, type = EnemyType.OSSUARY_TITAN, isBoss = true)
+            '3' -> Enemy(p.x, p.y, type = EnemyType.COLONNADE_KNIGHT, isBoss = true)
+            else -> Enemy(p.x, p.y)
+        }
+        enemy.onShootProjectile = { px, py, pvx, pvy ->
+            projectiles.add(Projectile(x = px, y = py, vx = pvx, vy = pvy))
+            spawnSparks(px, py, 6, Color.rgb(255, 180, 40))
+        }
+        enemy.onGroundSlam = { sx, sy ->
+            triggerShake(14f, 0.4f)
+            spawnSparks(sx, sy, 24, Color.rgb(220, 210, 190))
+        }
+        return enemy
     }
 
-    /**
-     * Loads every biome into one shared coordinate space. Room art stays authored locally;
-     * collision, enemies, camera and player all use world coordinates.
-     */
-    private fun loadContinuousWorld(startRoomId: String = "mossy_bridge") {
-        roomPlacements.clear()
-        roomPlacements.add(RoomPlacement(rooms.getValue("mossy_bridge"), 0f))
-        roomPlacements.add(RoomPlacement(rooms.getValue("dark_ribs"), 4400f))
-        roomPlacements.add(RoomPlacement(rooms.getValue("ruined_sanctuary"), 9000f))
-
+    private fun populateEnemies() {
         enemies.clear()
         projectiles.clear()
-        platforms.clear()
-        worldHazards.clear()
-        particles.clear()
-
-        worldLeft = roomPlacements.first().room.bounds.left
-        val lastPlacement = roomPlacements.last()
-        worldRight = lastPlacement.offsetX + lastPlacement.room.bounds.right
-        // Always start a fresh run with a full set of masks and enough Soul for one Focus.
-        player.currentMasks = player.maxMasks
-        player.soul = 33
-        deathTimer = 0f
-
-        for (placement in roomPlacements) {
-            val room = placement.room
-            val offset = placement.offsetX
-
-            // Remove internal room walls so passageways stay open. Keep the two outermost
-            // boundary walls, especially the final wall where the last floor ends.
-            for (local in room.platforms) {
-                val isLeftWall = local.height() > 800f && abs(local.left - room.bounds.left) < 1f
-                val isRightWall = local.height() > 800f && abs(local.right - room.bounds.right) < 1f
-                val isOuterWall =
-                    (placement == roomPlacements.first() && isLeftWall) ||
-                    (placement == roomPlacements.last() && isRightWall)
-                if ((!isLeftWall && !isRightWall) || isOuterWall) {
-                    platforms.add(RectF(local.left + offset, local.top, local.right + offset, local.bottom))
-                }
-            }
-
-            for (hazard in room.hazards) {
-                worldHazards.add(RectF(hazard.left + offset, hazard.top, hazard.right + offset, hazard.bottom))
-            }
-
-            for (spawn in room.enemySpawns) {
-                val enemyType = spawn.type ?: when {
-                    spawn.boss -> EnemyType.MOSS_CHARGER
-                    spawn.y < 250f -> EnemyType.FLYER
-                    spawn.x in 1100f..1400f && room.id == "mossy_bridge" -> EnemyType.SPITTER
-                    spawn.x in 1300f..1400f && room.id == "dark_ribs" -> EnemyType.SPITTER
-                    spawn.x in 550f..650f && room.id == "ruined_sanctuary" -> EnemyType.SPITTER
-                    spawn.x in 1600f..1700f && room.id == "mossy_bridge" -> EnemyType.SHIELDER
-                    spawn.x in 1000f..1100f && room.id == "dark_ribs" -> EnemyType.SHIELDER
-                    spawn.x in 1300f..1400f && room.id == "ruined_sanctuary" -> EnemyType.SHIELDER
-                    else -> EnemyType.CRAWLER
-                }
-
-                val enemy = Enemy(
-                    x = spawn.x + offset,
-                    y = spawn.y,
-                    type = enemyType,
-                    isBoss = spawn.boss
-                )
-                if (enemyType == EnemyType.SPITTER) {
-                    enemy.onShootProjectile = { px, py, pvx, pvy ->
-                        projectiles.add(Projectile(x = px, y = py, vx = pvx, vy = pvy))
-                        spawnSparks(px, py, 6, Color.rgb(255, 180, 40))
-                    }
-                }
-                enemies.add(enemy)
-            }
+        for (rec in spawnRecords) {
+            val e = makeEnemy(rec.point)
+            rec.enemy = e
+            enemies.add(e)
         }
-
-        // Keep the entire connected map enclosed, not each biome individually.
-        platforms.add(RectF(worldLeft - 80f, -500f, worldLeft, 900f))
-        platforms.add(RectF(worldRight, -500f, worldRight + 100f, 900f))
-
-        val start = roomPlacements.firstOrNull { it.room.id == startRoomId } ?: roomPlacements.first()
-        currentRoom = start.room
-        activeRoomId = start.room.id
-        player.x = start.offsetX + start.room.spawnX
-        player.y = start.room.spawnY
-        player.vx = 0f
-        player.vy = 0f
-        player.state = PlayerState.IDLE
-        player.activeHitbox = null
-        player.grabbedEnemy = null
-        player.isGrounded = false
-        cameraX = (player.x - 420f).coerceIn(worldLeft, worldRight - 1f)
-        cameraY = player.y - 300f
-        showCombatText(start.room.title, Color.rgb(220, 245, 240))
     }
 
-    private fun placementForX(worldX: Float): RoomPlacement {
-        for (placement in roomPlacements.asReversed()) {
-            // The next biome's floor starts at its local left bound, not at x=0.
-            if (worldX >= placement.offsetX + placement.room.bounds.left) return placement
+    /** Benches bring the common fauna back; slain bosses stay slain. */
+    private fun respawnRegularEnemies() {
+        for (rec in spawnRecords) {
+            val e = rec.enemy
+            if (e != null && e.isBoss) continue
+            if (e == null || !e.isAlive) {
+                if (e != null) enemies.remove(e)
+                val fresh = makeEnemy(rec.point)
+                rec.enemy = fresh
+                enemies.add(fresh)
+            }
         }
-        return roomPlacements.first()
+        projectiles.clear()
     }
+
+    // ===================================================================== areas
+
+    private fun sceneAt(x: Float, y: Float): AreaScene? {
+        val col = floor(x / AreaDef.TILE).toInt()
+        val row = floor(y / AreaDef.TILE).toInt()
+        val g = layout.areaAt(col, row) ?: return null
+        return sceneById[g.def.id]
+    }
+
+    private fun enterArea(scene: AreaScene, announce: Boolean) {
+        val first = discovered.add(scene.def.id)
+        currentScene = scene
+        for (b in benches) if (b.areaId == scene.def.id) b.discovered = true
+        if (announce || first) {
+            titleName = scene.def.name
+            titleSub = scene.def.subtitle
+            titleDuration = if (first) 3.6f else 2.0f
+            titleTimer = titleDuration
+        }
+        if (announce) {
+            backdropScene = scene
+        } else {
+            // Dip to black; the backdrop swaps at the darkest point (see update()).
+            fadeTimer = FADE_TIME
+            fadeIsDip = true
+        }
+    }
+
+    // ===================================================================== public API
 
     fun reset() {
-        val startZone = placementForX(player.x)
-        loadContinuousWorld(startZone.room.id)
-        player.currentMasks = player.maxMasks
-        player.soul = 33
+        respawnPlayer(full = true)
+    }
+
+    fun toggleMap() {
+        mapOpen = !mapOpen
     }
 
     fun triggerShake(intensity: Float, duration: Float) {
@@ -215,57 +256,75 @@ class GameWorld {
             val life = Random.nextFloat() * 0.25f + 0.15f
             particles.add(
                 Particle(
-                    x = x,
-                    y = y,
+                    x = x, y = y,
                     vx = kotlin.math.cos(angle) * speed,
                     vy = kotlin.math.sin(angle) * speed,
                     radius = Random.nextFloat() * 3.5f + 2f,
-                    color = color,
-                    life = life,
-                    maxLife = life
+                    color = color, life = life, maxLife = life
                 )
             )
         }
     }
 
+    private fun respawnPlayer(full: Boolean) {
+        val bench = currentBench
+        player.x = bench?.x ?: worldSpawnX
+        player.y = bench?.y ?: worldSpawnY
+        player.vx = 0f
+        player.vy = 0f
+        player.currentMasks = player.maxMasks
+        player.soul = if (full) 33 else 0
+        player.state = PlayerState.IDLE
+        player.isGrounded = false
+        player.invincibilityTimer = 1.35f
+        player.flashTimer = 0f
+        player.activeHitbox = null
+        player.grabbedEnemy?.isGrabbed = false
+        player.grabbedEnemy = null
+        lastSafeX = player.x
+        lastSafeY = player.y
+        deathTimer = 0f
+        respawnRegularEnemies()
+        particles.clear()
+        val scene = sceneAt(player.x, player.y - 10f)
+        if (scene != null && scene !== currentScene) enterArea(scene, announce = true)
+        cameraX = player.x - viewW / 2f
+        camTargetY = player.y - viewH * 0.6f
+        cameraY = camTargetY
+        backdropScene = currentScene
+        fadeTimer = FADE_TIME
+        fadeIsDip = false
+    }
+
+    // ===================================================================== update
+
     fun update(dt: Float, inputX: Float, screenWidth: Float, screenHeight: Float) {
-        // Death pause and respawn: losing the last mask now has a real consequence.
+        zoom = screenHeight / DESIGN_VIEW_H
+        viewW = screenWidth / zoom
+        viewH = DESIGN_VIEW_H
+        gameTime += dt
+        if (mapOpen) return
+
         if (player.state == PlayerState.DEAD) {
             deathTimer -= dt
-            if (deathTimer <= 0f) {
-                val deathZone = placementForX(player.x)
-                player.x = deathZone.offsetX + deathZone.room.spawnX
-                player.y = deathZone.room.spawnY
-                player.vx = 0f
-                player.vy = 0f
-                player.currentMasks = player.maxMasks
-                player.soul = 0 // Soul is lost on death; rebuild it through combat.
-                player.state = PlayerState.IDLE
-                player.isGrounded = false
-                player.invincibilityTimer = 1.35f
-                player.flashTimer = 0f
-                player.activeHitbox = null
-                player.grabbedEnemy = null
-            }
+            if (deathTimer <= 0f) respawnPlayer(full = false)
         }
 
-        // Update player
+        // ---- player
         val prevHeadbutt = player.state == PlayerState.HEADBUTTING
-        val prevParry = player.parrySuccess
-
+        val pbox = player.getBoundingBox()
+        val nearSolids = solids.query(pbox, 160f)
         player.update(
             dt = dt,
             inputX = inputX,
-            platforms = platforms,
+            platforms = nearSolids,
             enemies = enemies,
             onParryTriggered = {
                 triggerShake(9f, 0.25f)
-                showCombatText("⚔️ PARRIED! [STUNNED]", Color.rgb(255, 230, 80))
                 spawnSparks(player.x + 20f, player.y - player.height / 2, 16, Color.YELLOW)
             }
         )
 
-        // Enter a short death pause when the last mask breaks.
         if (player.currentMasks <= 0 && player.state != PlayerState.DEAD) {
             player.state = PlayerState.DEAD
             player.vx = 0f
@@ -277,52 +336,45 @@ class GameWorld {
             triggerShake(12f, 0.35f)
         }
 
-        // Detect headbutt execution trigger
         if (!prevHeadbutt && player.state == PlayerState.HEADBUTTING) {
             triggerShake(12f, 0.3f)
-            showCombatText("💥 HEADBUTT SMASH!", Color.rgb(255, 100, 80))
             spawnSparks(player.x + 30f, player.y - player.height / 2, 22, Color.rgb(255, 120, 40))
         }
 
-        // Update enemies
+        // ---- enemies (only the ones near enough to matter)
         for (enemy in enemies) {
-            enemy.update(dt, player.x, player.y, platforms)
+            if (!enemy.isAlive) continue
+            if (abs(enemy.x - player.x) > ACTIVE_RANGE_X || abs(enemy.y - player.y) > ACTIVE_RANGE_Y) continue
+            val ebox = enemy.getBoundingBox()
+            enemy.update(dt, player.x, player.y, solids.query(ebox, 120f))
         }
 
-        // Update projectiles & check player / parry collisions
+        // ---- projectiles
         val projIter = projectiles.iterator()
         while (projIter.hasNext()) {
             val proj = projIter.next()
-            proj.update(dt, platforms)
-
-            if (!proj.isAlive) {
-                projIter.remove()
-                continue
-            }
+            proj.update(dt, solids.query(proj.x - 30f, proj.y - 30f, proj.x + 30f, proj.y + 30f))
+            if (!proj.isAlive) { projIter.remove(); continue }
 
             val projBox = proj.getBoundingBox()
-
             if (!proj.isReflected) {
-                // Check collision with player
                 if (RectF.intersects(player.getBoundingBox(), projBox)) {
                     if (player.state == PlayerState.PARRYING) {
-                        // Deflect projectile back with safety pin!
                         val reflectDir = if (player.facing == Facing.RIGHT) 1f else -1f
                         proj.reflect(reflectDir * 420f, 0f)
                         triggerShake(8f, 0.2f)
-                        showCombatText("🛡️ DEFLECTED!", Color.rgb(100, 240, 255))
                         spawnSparks(proj.x, proj.y, 14, Color.CYAN)
                         player.parrySuccess = true
                         player.soul = (player.soul + 15).coerceAtMost(player.maxSoul)
                     } else if (player.invincibilityTimer <= 0f) {
                         player.takeDamage(1)
+                        hurtFlash = 0.25f
                         proj.isAlive = false
                         projIter.remove()
                         spawnSparks(player.x, player.y - player.height / 2, 8, Color.YELLOW)
                     }
                 }
             } else {
-                // Reflected projectile can damage enemies!
                 for (enemy in enemies) {
                     if (enemy.isAlive && RectF.intersects(enemy.getBoundingBox(), projBox)) {
                         enemy.takeDamage(35, if (proj.vx > 0) 180f else -180f, -60f)
@@ -335,98 +387,167 @@ class GameWorld {
             }
         }
 
-        // Update particles
+        // ---- particles
         val pIter = particles.iterator()
         while (pIter.hasNext()) {
             val p = pIter.next()
             p.update(dt)
-            if (p.isDead()) {
-                pIter.remove()
+            if (p.isDead()) pIter.remove()
+        }
+
+        // ---- hazards: spikes and acid cost a mask and return you to solid ground
+        if (player.state != PlayerState.DEAD) {
+            val box = player.getBoundingBox()
+            var hit: RectF? = null
+            for (h in hazards.query(box, 0f)) if (RectF.intersects(box, h)) { hit = h; break }
+            if (hit != null) {
+                if (player.invincibilityTimer <= 0f) {
+                    player.takeDamage(1)
+                    hurtFlash = 0.35f
+                }
+                player.grabbedEnemy?.isGrabbed = false
+                player.grabbedEnemy = null
+                player.x = lastSafeX
+                player.y = lastSafeY
+                player.vx = 0f
+                player.vy = 0f
+                player.isGrounded = true
+                player.activeHitbox = null
+                if (player.state != PlayerState.DEAD) player.state = PlayerState.IDLE
+                player.invincibilityTimer = max(player.invincibilityTimer, 1.2f)
+                triggerShake(10f, 0.3f)
+                spawnSparks(player.x, player.y - 20f, 16, Color.rgb(240, 80, 80))
+            } else if (player.isGrounded) {
+                safeTimer += dt
+                if (safeTimer > 0.35f) {
+                    // remember this spot only if nothing hostile lies directly beneath it
+                    var clean = true
+                    for (h in hazards.query(player.x - 30f, player.y - 10f, player.x + 30f, player.y + 60f)) {
+                        if (h.left < player.x + 30f && h.right > player.x - 30f) { clean = false; break }
+                    }
+                    if (clean) { lastSafeX = player.x; lastSafeY = player.y }
+                    safeTimer = 0f
+                }
             }
         }
 
-        // Walk across biome boundaries without teleporting or reloading the room.
-        val zone = placementForX(player.x)
-        if (zone.room.id != activeRoomId) {
-            activeRoomId = zone.room.id
-            currentRoom = zone.room
-            showCombatText(zone.room.title, Color.rgb(220, 245, 240))
-        }
-
-        // Water and spike hazards remain active after the biomes are joined.
-        val playerBox = player.getBoundingBox()
-        var hitHazard = false
-        for (haz in worldHazards) {
-            if (RectF.intersects(playerBox, haz)) {
-                hitHazard = true
-                break
+        // ---- benches
+        for (b in benches) {
+            if (player.isGrounded && b.playerOnBench(player.x, player.y) && abs(player.vx) < 8f && player.state != PlayerState.DEAD) {
+                b.restTimer += dt
+                if (b.restTimer >= 0.8f && !b.resting) {
+                    b.resting = true
+                    rest(b)
+                }
+            } else {
+                b.restTimer = 0f
+                b.resting = false
             }
         }
-        if ((hitHazard || player.y > 900f) && player.state != PlayerState.DEAD) {
-            player.grabbedEnemy?.isGrabbed = false
-            player.grabbedEnemy = null
-            player.x = zone.offsetX + zone.room.spawnX
-            player.y = zone.room.spawnY
-            player.vx = 0f
-            player.vy = 0f
-            player.state = PlayerState.IDLE
-            player.activeHitbox = null
-            triggerShake(10f, 0.3f)
-            spawnSparks(player.x, player.y, 16, Color.rgb(240, 80, 80))
+
+        // ---- area tracking
+        if (areaCooldown > 0f) areaCooldown -= dt
+        val here = sceneAt(player.x, player.y - player.height * 0.5f)
+        if (here != null && here !== currentScene && areaCooldown <= 0f) {
+            areaCooldown = 1.5f
+            enterArea(here, announce = false)
         }
 
-        // Screen shake decay
-        if (screenShakeTime > 0f) {
-            screenShakeTime -= dt
+        // ---- timers
+        if (screenShakeTime > 0f) screenShakeTime -= dt
+        if (titleTimer > 0f) titleTimer -= dt
+        if (fadeTimer > 0f) {
+            fadeTimer -= dt
+            if (fadeIsDip && fadeTimer <= FADE_TIME * 0.5f) backdropScene = currentScene
         }
+        if (hurtFlash > 0f) hurtFlash -= dt
 
-        // Combat message timer
-        if (combatMessageTimer > 0f) {
-            combatMessageTimer -= dt
-        }
-
-        gameTime += dt
-
-        // Camera follows through the full connected world and stops at its outer edges.
-        val maxCameraX = (worldRight - screenWidth).coerceAtLeast(worldLeft)
-        val targetCamX = (player.x - screenWidth / 2f).coerceIn(worldLeft, maxCameraX)
-        val targetCamY = player.y - screenHeight * 0.62f
-        cameraX += (targetCamX - cameraX) * 8f * dt
-        cameraX = cameraX.coerceIn(worldLeft, maxCameraX)
-        cameraY += (targetCamY - cameraY) * 8f * dt
+        updateCamera(dt)
     }
 
-    fun draw(canvas: Canvas, paint: Paint, screenWidth: Float, screenHeight: Float) {
-        // One continuous parallax backdrop. The first biome paints the shared void gradient;
-        // the following biomes add their silhouettes into that same background.
-        for ((index, placement) in roomPlacements.withIndex()) {
-            canvas.save()
-            if (index > 0) canvas.translate(placement.offsetX * 0.25f, 0f)
-            placement.room.drawBackdrop(canvas, paint, cameraX, cameraY, screenWidth, screenHeight, gameTime)
-            canvas.restore()
+    private fun rest(b: Bench) {
+        for (o in benches) o.isCurrent = false
+        b.isCurrent = true
+        currentBench = b
+        player.currentMasks = player.maxMasks
+        player.soul = max(player.soul, 33)
+        respawnRegularEnemies()
+        spawnSparks(b.x, b.y - 30f, 18, Color.rgb(255, 230, 170))
+    }
+
+    private fun updateCamera(dt: Float) {
+        val look = if (player.facing == Facing.RIGHT) 70f else -70f
+        val targetX = player.x + look - viewW / 2f
+
+        // Vertical: lock to the ground when standing; while airborne only move when the
+        // player leaves a generous band, which keeps jumps from bouncing the view.
+        val groundTarget = player.y - viewH * 0.6f
+        if (player.isGrounded) {
+            camTargetY = groundTarget
+        } else {
+            val top = camTargetY + viewH * 0.22f
+            val bottom = camTargetY + viewH * 0.78f
+            if (player.y < top) camTargetY -= (top - player.y)
+            else if (player.y > bottom) camTargetY += (player.y - bottom)
         }
+
+        val minX = worldBounds.left + 40f
+        val maxX = worldBounds.right - 40f - viewW
+        val minY = worldBounds.top
+        val maxY = worldBounds.bottom - viewH
+        val tx = targetX.coerceIn(minX, max(minX, maxX))
+        val ty = camTargetY.coerceIn(minY, max(minY, maxY))
+        val k = 1f - kotlin.math.exp(-dt * 7f)
+        cameraX += (tx - cameraX) * k
+        cameraY += (ty - cameraY) * (1f - kotlin.math.exp(-dt * 5f))
+        if (abs(tx - cameraX) < 0.3f) cameraX = tx
+    }
+
+    // ===================================================================== draw
+
+    fun draw(canvas: Canvas, paint: Paint, screenWidth: Float, screenHeight: Float) {
+        zoom = screenHeight / DESIGN_VIEW_H
+        viewW = screenWidth / zoom
+        viewH = DESIGN_VIEW_H
+        val scene = backdropScene ?: currentScene ?: scenes.first()
+
+        var shakeX = 0f
+        var shakeY = 0f
+        if (screenShakeTime > 0f) {
+            shakeX = (Random.nextFloat() - 0.5f) * screenShakeIntensity * 2f
+            shakeY = (Random.nextFloat() - 0.5f) * screenShakeIntensity * 2f
+        }
+        val camX = cameraX + shakeX
+        val camY = cameraY + shakeY
+        view.set(camX - 60f, camY - 60f, camX + viewW + 60f, camY + viewH + 60f)
 
         canvas.save()
-        var shakeOffsetX = 0f
-        var shakeOffsetY = 0f
-        if (screenShakeTime > 0f) {
-            shakeOffsetX = (Random.nextFloat() - 0.5f) * screenShakeIntensity * 2f
-            shakeOffsetY = (Random.nextFloat() - 0.5f) * screenShakeIntensity * 2f
-        }
-        canvas.translate(-cameraX + shakeOffsetX, -cameraY + shakeOffsetY)
+        canvas.scale(zoom, zoom)
 
-        // Draw all biome geometry in the shared world coordinate system.
-        for (placement in roomPlacements) {
-            canvas.save()
-            canvas.translate(placement.offsetX, 0f)
-            placement.room.drawWorld(canvas, paint, gameTime)
-            canvas.restore()
-        }
+        // 1. sky + parallax for the area the player is in
+        Backdrops.drawSky(canvas, paint, scene.pal, viewW, viewH, camX, camY, scene.def.openSky, gameTime)
+        Backdrops.drawParallax(canvas, paint, scene.biome, scene.pal, camX, camY, viewW, viewH, gameTime)
 
-        for (enemy in enemies) enemy.draw(canvas, paint)
+        // 2. world layer
+        canvas.save()
+        canvas.translate(-camX, -camY)
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        paint.color = FILLER_COLOR
+        for (f in fillers) if (RectF.intersects(f, view)) canvas.drawRect(f, paint)
+        for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawWorld(canvas, paint, view, gameTime)
+        for (b in benches) if (b.x > view.left - 80f && b.x < view.right + 80f && b.y > view.top - 80f && b.y < view.bottom + 80f) b.draw(canvas, paint, gameTime)
+
+        for (enemy in enemies) {
+            if (!enemy.isAlive) continue
+            if (enemy.x < view.left - 200f || enemy.x > view.right + 200f || enemy.y < view.top - 200f || enemy.y > view.bottom + 200f) continue
+            enemy.draw(canvas, paint)
+        }
         for (proj in projectiles) proj.draw(canvas, paint)
         player.draw(canvas, paint)
+        for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawLights(canvas, paint, view)
 
+        paint.shader = null
         paint.style = Paint.Style.FILL
         for (particle in particles) {
             paint.color = particle.color
@@ -434,40 +555,104 @@ class GameWorld {
         }
         canvas.restore()
 
-        // Front-layer particles, light shafts and edge vignettes scroll with each biome.
-        for (placement in roomPlacements) {
-            placement.room.drawFront(
-                canvas, paint,
-                cameraX - placement.offsetX, cameraY,
-                screenWidth, screenHeight, gameTime
-            )
+        // 3. front layer: weather, darkness, transitions, titles (design units)
+        Backdrops.drawWeather(canvas, paint, scene.biome, scene.pal, camX, camY, viewW, viewH, gameTime)
+        Backdrops.drawDarkness(canvas, paint, player.x - camX, player.y - camY - player.height * 0.5f, scene.def.darkness, viewW, viewH)
+        drawEdgeVignette(canvas, paint)
+        if (hurtFlash > 0f) {
+            paint.color = Color.argb((hurtFlash / 0.35f * 90f).toInt().coerceIn(0, 90), 200, 30, 40)
+            canvas.drawRect(0f, 0f, viewW, viewH, paint)
         }
+        if (fadeTimer > 0f) {
+            val p = (fadeTimer / FADE_TIME).coerceIn(0f, 1f)
+            val a = if (fadeIsDip) kotlin.math.sin(p * Math.PI).toFloat() * 0.9f else p
+            paint.color = Color.argb((a * 255f).toInt(), 0, 0, 0)
+            canvas.drawRect(0f, 0f, viewW, viewH, paint)
+        }
+        if (titleTimer > 0f) drawTitleCard(canvas, paint, scene)
+        canvas.restore()
+
+        // 4. screen-space UI
         drawHUD(canvas, paint, screenWidth, screenHeight)
-        if (player.state == PlayerState.DEAD) {
-            drawDefeatedScreen(canvas, paint, screenWidth, screenHeight)
+        if (player.state == PlayerState.DEAD) drawDefeatedScreen(canvas, paint, screenWidth, screenHeight)
+        if (mapOpen) {
+            worldMap.draw(canvas, paint, screenWidth, screenHeight, gameTime, discovered, benches, player.x, player.y, currentScene?.def?.id)
         }
+    }
+
+    private fun drawEdgeVignette(canvas: Canvas, paint: Paint) {
+        // Soft darkening at the screen edges, cheap and constant.
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        val a = 70
+        val h = viewH * 0.18f
+        for (i in 0 until 6) {
+            paint.color = Color.argb(a / 6, 0, 0, 0)
+            canvas.drawRect(0f, 0f, viewW, h * (1f - i / 6f), paint)
+            canvas.drawRect(0f, viewH - h * (1f - i / 6f), viewW, viewH, paint)
+        }
+    }
+
+    private fun drawTitleCard(canvas: Canvas, paint: Paint, scene: AreaScene) {
+        val elapsed = titleDuration - titleTimer
+        val alpha = when {
+            elapsed < 0.6f -> elapsed / 0.6f
+            titleTimer < 0.9f -> titleTimer / 0.9f
+            else -> 1f
+        }.coerceIn(0f, 1f)
+        val cx = viewW / 2f
+        val cy = viewH * 0.3f
+        val rise = (1f - alpha) * 6f
+
+        paint.style = Paint.Style.FILL
+        paint.textAlign = Paint.Align.CENTER
+        paint.typeface = serif
+        paint.textSize = 46f
+        paint.letterSpacing = 0.12f
+        paint.color = Color.argb((alpha * 90).toInt(), 0, 0, 0)
+        canvas.drawText(titleName, cx + 2f, cy + 2f + rise, paint)
+        paint.color = scene.pal.titleTint
+        paint.alpha = (alpha * 255).toInt()
+        paint.setShadowLayer(14f, 0f, 0f, Color.argb((alpha * 120).toInt(), 160, 200, 230))
+        canvas.drawText(titleName, cx, cy + rise, paint)
+        paint.clearShadowLayer()
+
+        paint.strokeWidth = 1.2f
+        paint.style = Paint.Style.STROKE
+        paint.color = Color.argb((alpha * 160).toInt(), 200, 212, 230)
+        val w = paint.measureText(titleName) * 0.5f + 30f
+        canvas.drawLine(cx - w, cy + 16f + rise, cx - 12f, cy + 16f + rise, paint)
+        canvas.drawLine(cx + 12f, cy + 16f + rise, cx + w, cy + 16f + rise, paint)
+        paint.style = Paint.Style.FILL
+        scratchPath.reset()
+        scratchPath.moveTo(cx, cy + 10f + rise); scratchPath.lineTo(cx + 5f, cy + 16f + rise)
+        scratchPath.lineTo(cx, cy + 22f + rise); scratchPath.lineTo(cx - 5f, cy + 16f + rise); scratchPath.close()
+        canvas.drawPath(scratchPath, paint)
+
+        paint.letterSpacing = 0.22f
+        paint.textSize = 15f
+        paint.color = Color.argb((alpha * 200).toInt(), 205, 214, 228)
+        canvas.drawText(titleSub.uppercase(), cx, cy + 42f + rise, paint)
+        paint.letterSpacing = 0f
+        paint.typeface = Typeface.DEFAULT
+        paint.textAlign = Paint.Align.LEFT
+        paint.alpha = 255
     }
 
     /**
      * Minimal, native Canvas death overlay. Kept as text and shapes so it scales cleanly
      * on every display and doesn't depend on a bitmap asset.
      */
-    private fun drawDefeatedScreen(
-        canvas: Canvas,
-        paint: Paint,
-        screenWidth: Float,
-        screenHeight: Float
-    ) {
+    private fun drawDefeatedScreen(canvas: Canvas, paint: Paint, screenWidth: Float, screenHeight: Float) {
         val centerX = screenWidth / 2f
         val centerY = screenHeight * 0.46f
         val titleSize = (screenWidth * 0.055f).coerceIn(28f, 42f)
 
-        // Quietly dim the world without hiding the scene completely.
+        paint.shader = null
         paint.style = Paint.Style.FILL
         paint.color = Color.argb(178, 4, 8, 16)
         canvas.drawRect(0f, 0f, screenWidth, screenHeight, paint)
 
-        // Fine framing lines and a small central crest.
         val lineY = centerY + titleSize * 0.72f
         val lineHalf = (screenWidth * 0.17f).coerceAtMost(150f)
         paint.style = Paint.Style.STROKE
@@ -477,20 +662,15 @@ class GameWorld {
         canvas.drawLine(centerX + 15f, lineY, centerX + lineHalf, lineY, paint)
 
         paint.style = Paint.Style.FILL
-        val crest = android.graphics.Path().apply {
-            moveTo(centerX, lineY - 9f)
-            lineTo(centerX + 7f, lineY)
-            lineTo(centerX, lineY + 9f)
-            lineTo(centerX - 7f, lineY)
-            close()
-        }
-        canvas.drawPath(crest, paint)
+        scratchPath.reset()
+        scratchPath.moveTo(centerX, lineY - 9f)
+        scratchPath.lineTo(centerX + 7f, lineY)
+        scratchPath.lineTo(centerX, lineY + 9f)
+        scratchPath.lineTo(centerX - 7f, lineY)
+        scratchPath.close()
+        canvas.drawPath(scratchPath, paint)
 
-        // Normal-sized, elegant text with a restrained cool-white tint.
-        paint.typeface = android.graphics.Typeface.create(
-            android.graphics.Typeface.SERIF,
-            android.graphics.Typeface.NORMAL
-        )
+        paint.typeface = serif
         paint.textAlign = Paint.Align.CENTER
         paint.textSize = titleSize
         paint.color = Color.rgb(226, 234, 242)
@@ -498,10 +678,11 @@ class GameWorld {
         canvas.drawText("Defeated", centerX, centerY, paint)
         paint.clearShadowLayer()
 
-        paint.typeface = android.graphics.Typeface.DEFAULT
+        paint.typeface = Typeface.DEFAULT
         paint.textSize = 12f
         paint.color = Color.argb(190, 169, 185, 199)
-        canvas.drawText("Returning to the last area", centerX, lineY + 30f, paint)
+        val where = if (currentBench != null) "Returning to the last bench" else "Returning to Dustmere"
+        canvas.drawText(where, centerX, lineY + 30f, paint)
 
         paint.textAlign = Paint.Align.LEFT
         paint.style = Paint.Style.FILL
@@ -512,6 +693,7 @@ class GameWorld {
     private fun drawHUD(canvas: Canvas, paint: Paint, screenWidth: Float, screenHeight: Float) {
         // Compact, text-free HUD: Soul meter + five readable masks.
         val panel = RectF(18f, 16f, 278f, 84f)
+        paint.shader = null
         paint.style = Paint.Style.FILL
         paint.color = Color.argb(190, 8, 13, 23)
         canvas.drawRoundRect(panel, 18f, 18f, paint)
@@ -529,27 +711,22 @@ class GameWorld {
         paint.color = Color.rgb(29, 47, 62)
         canvas.drawCircle(soulX, soulY, 17f, paint)
 
-        // Soul is shown as a clean arc instead of a giant white bubble.
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 5f
         paint.strokeCap = Paint.Cap.ROUND
         paint.color = Color.rgb(118, 211, 235)
-        canvas.drawArc(RectF(soulX - 19f, soulY - 19f, soulX + 19f, soulY + 19f),
-            -90f, 360f * soulPct, false, paint)
+        canvas.drawArc(RectF(soulX - 19f, soulY - 19f, soulX + 19f, soulY + 19f), -90f, 360f * soulPct, false, paint)
         paint.strokeWidth = 2f
         paint.color = Color.rgb(185, 225, 239)
         canvas.drawCircle(soulX, soulY, 23f, paint)
 
-        // Focus charge gets its own warm progress ring while the player holds Heal.
         if (player.state == PlayerState.HEALING) {
             paint.strokeWidth = 3f
             paint.color = Color.rgb(255, 211, 112)
             canvas.drawArc(RectF(soulX - 27f, soulY - 27f, soulX + 27f, soulY + 27f),
-                -90f, 360f * (player.healCharge / player.healChargeTime).coerceIn(0f, 1f),
-                false, paint)
+                -90f, 360f * (player.healCharge / player.healChargeTime).coerceIn(0f, 1f), false, paint)
         }
 
-        // Hollow-Knight-inspired mask pips: full masks are bright; broken masks are dim.
         val maskStartX = 101f
         val maskSpacing = 32f
         for (i in 0 until player.maxMasks) {
@@ -559,17 +736,10 @@ class GameWorld {
                 paint.style = Paint.Style.FILL
                 paint.color = Color.rgb(238, 242, 244)
                 canvas.drawOval(mx - 10f, my - 13f, mx + 10f, my + 13f, paint)
-                val horn = android.graphics.Path().apply {
-                    moveTo(mx - 8f, my - 7f)
-                    lineTo(mx - 13f, my - 15f)
-                    lineTo(mx - 2f, my - 10f)
-                    close()
-                    moveTo(mx + 8f, my - 7f)
-                    lineTo(mx + 13f, my - 15f)
-                    lineTo(mx + 2f, my - 10f)
-                    close()
-                }
-                canvas.drawPath(horn, paint)
+                scratchPath.reset()
+                scratchPath.moveTo(mx - 8f, my - 7f); scratchPath.lineTo(mx - 13f, my - 15f); scratchPath.lineTo(mx - 2f, my - 10f); scratchPath.close()
+                scratchPath.moveTo(mx + 8f, my - 7f); scratchPath.lineTo(mx + 13f, my - 15f); scratchPath.lineTo(mx + 2f, my - 10f); scratchPath.close()
+                canvas.drawPath(scratchPath, paint)
                 paint.color = Color.rgb(15, 22, 31)
                 canvas.drawOval(mx - 5f, my - 1f, mx - 2f, my + 5f, paint)
                 canvas.drawOval(mx + 2f, my - 1f, mx + 5f, my + 5f, paint)
@@ -581,9 +751,28 @@ class GameWorld {
                 canvas.drawLine(mx - 5f, my + 2f, mx + 2f, my - 5f, paint)
             }
         }
+
+        // Current area, quietly, under the masks.
+        val scene = currentScene
+        if (scene != null) {
+            paint.style = Paint.Style.FILL
+            paint.typeface = serif
+            paint.textSize = 13f
+            paint.textAlign = Paint.Align.LEFT
+            paint.color = Color.argb(170, 200, 212, 228)
+            canvas.drawText(scene.def.name, 22f, 104f, paint)
+            paint.typeface = Typeface.DEFAULT
+        }
         paint.alpha = 255
         paint.style = Paint.Style.FILL
         paint.strokeCap = Paint.Cap.BUTT
     }
 
+    companion object {
+        const val DESIGN_VIEW_H = 760f
+        const val FADE_TIME = 0.7f
+        const val ACTIVE_RANGE_X = 1500f
+        const val ACTIVE_RANGE_Y = 1000f
+        val FILLER_COLOR = Color.rgb(9, 10, 16)
+    }
 }

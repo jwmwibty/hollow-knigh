@@ -530,6 +530,23 @@ class Enemy(
         vy += 1200f * dt
         if (vy > 900f) vy = 900f
 
+        // Ground walkers turn around at ledges instead of marching off into pits.
+        if (isGrounded && abs(vx) > 1f) {
+            val aheadX = x + (if (vx > 0) 1f else -1f) * (width / 2f + 6f)
+            var groundAhead = false
+            for (plat in platforms) {
+                if (aheadX >= plat.left && aheadX <= plat.right && y + 6f >= plat.top && y - 6f <= plat.bottom) {
+                    groundAhead = true
+                    break
+                }
+            }
+            if (!groundAhead) {
+                vx = -vx
+                facing = if (vx > 0) Facing.RIGHT else Facing.LEFT
+                patrolTimer = 0f
+            }
+        }
+
         x += vx * dt
         val currentBox = getBoundingBox()
         for (plat in platforms) {
@@ -551,7 +568,7 @@ class Enemy(
         isGrounded = false
         for (plat in platforms) {
             if (RectF.intersects(vertBox, plat)) {
-                if (vy > 0 && vertBox.bottom - (vy * dt) <= plat.top + 10f) {
+                if (vy > 0 && vertBox.bottom - (vy * dt) <= plat.top + kotlin.math.max(10f, vy * dt + 2f)) {
                     y = plat.top
                     vy = 0f
                     isGrounded = true

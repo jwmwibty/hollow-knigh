@@ -79,18 +79,33 @@ fun GameScreen(
                 }
             )
 
-            // Top-Right: Quick Reset / Respawn Button
-            Box(
+            // Top-Right: Map + Respawn
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 16.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x88202432))
-                    .border(1.dp, Color(0x66A0C0E0), RoundedCornerShape(8.dp))
-                    .clickable { gameViewRef?.world?.reset() }
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("🔄 Respawn Room", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x88202432))
+                        .border(1.dp, Color(0x66A0C0E0), RoundedCornerShape(8.dp))
+                        .clickable { gameViewRef?.world?.toggleMap() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text("🗺 Map", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x88202432))
+                        .border(1.dp, Color(0x66A0C0E0), RoundedCornerShape(8.dp))
+                        .clickable { gameViewRef?.world?.reset() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text("🔄 Return to Bench", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
 
             // Right Side: Combat & Movement Action Buttons

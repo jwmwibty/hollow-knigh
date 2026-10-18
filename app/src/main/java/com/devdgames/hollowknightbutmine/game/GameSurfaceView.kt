@@ -66,6 +66,12 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 }
                 return true
             }
+            KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_TAB -> {
+                if (event.repeatCount == 0) {
+                    world.toggleMap()
+                }
+                return true
+            }
         }
         return false
     }

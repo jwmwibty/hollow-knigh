@@ -461,8 +461,8 @@ class Player(
         x += vx * dt
         var box = getBoundingBox()
         for (plat in platforms) {
-            // Slabs/floating platforms are thin (< 45px tall); don't block horizontal running/jumping through them
-            val isThinLedge = plat.height() < 48f
+            // Jump-through ledges are thin (< 20px tall); don't block horizontal running/jumping through them
+            val isThinLedge = plat.height() < 20f
             if (!isThinLedge && RectF.intersects(box, plat)) {
                 if (vx > 0) {
                     x = plat.left - width / 2
@@ -480,9 +480,9 @@ class Player(
         box = getBoundingBox()
         isGrounded = false
         for (plat in platforms) {
-            val isThinLedge = plat.height() < 48f
+            val isThinLedge = plat.height() < 20f
             if (RectF.intersects(box, plat)) {
-                if (vy > 0 && prevBottom <= plat.top + 14f) {
+                if (vy > 0 && prevBottom <= plat.top + kotlin.math.max(14f, vy * dt + 2f)) {
                     // Landing on top surface of platform/slab
                     y = plat.top
                     vy = 0f
