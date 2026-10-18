@@ -140,7 +140,7 @@ class Player(
     /**
      * Safety Pin Grab (Hooking enemy with the clasp)
      */
-    fun grab() {
+    fun grab(enemies: List<Enemy> = emptyList()) {
         if (state == PlayerState.DEAD) return
         // While an enemy is being pulled in, don't restart the grab or require another press.
         if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
