@@ -6,7 +6,9 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.random.Random
 
 /**
  * Player Controller wielding the Safety Pin!
@@ -56,6 +58,11 @@ class Player(
     // Pin Combat mechanics
     var activeHitbox: AttackHitbox? = null
     var grabbedEnemy: Enemy? = null
+    private var grabTargetEnemy: Enemy? = null
+    private var grabDirectionX = 1f
+    private var grabDirectionY = 0f
+    private val grabRange = 300f
+    private val grabDuration = 0.34f
     var parrySuccess = false
 
     // Healing mechanics
@@ -138,21 +145,44 @@ class Player(
     }
 
     /**
-     * Safety Pin Grab (Hooking enemy with the clasp)
+     * Safety Pin Grab: randomly hooks one living enemy within 300 world units.
+     * Targeting is circular, not a facing-direction hitbox, so enemies above,
+     * below, left and right can all be caught.
      */
-    fun grab() {
+    fun grab(enemies: List<Enemy> = emptyList()) {
         if (state == PlayerState.DEAD) return
-        // While an enemy is being pulled in, don't restart the grab or require another press.
         if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
-        if (state == PlayerState.DASHING) return
+        if (state == PlayerState.DASHING || state == PlayerState.GRABBING) return
+
+        val originY = y - height * 0.5f
+        val candidates = enemies.filter { enemy ->
+            if (!enemy.isAlive || enemy.isGrabbed) {
+                false
+            } else {
+                val dx = enemy.x - x
+                val dy = (enemy.y - enemy.height * 0.5f) - originY
+                dx * dx + dy * dy <= grabRange * grabRange
+            }
+        }
+        grabTargetEnemy = candidates.randomOrNull()
+        val target = grabTargetEnemy
+        if (target != null) {
+            val dx = target.x - x
+            val dy = (target.y - target.height * 0.5f) - originY
+            val distance = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
+            grabDirectionX = dx / distance
+            grabDirectionY = dy / distance
+        } else {
+            // A clean whiff still extends the pin in a random direction.
+            val angle = Random.nextFloat() * (2f * Math.PI.toFloat())
+            grabDirectionX = cos(angle)
+            grabDirectionY = sin(angle)
+        }
 
         state = PlayerState.GRABBING
-        stateTimer = 0.25f
-
-        val reach = 150f // Long-range hook so the grab has a useful pull distance.
-        val attackX = if (facing == Facing.RIGHT) x + 10f else x - 10f - reach
-        val attackBox = RectF(attackX, y - height * 0.75f, attackX + reach, y - height * 0.2f)
-        activeHitbox = AttackHitbox(rect = attackBox, damage = 5, isGrab = true)
+        stateTimer = grabDuration
+        activeHitbox = null
+        vx = 0f
     }
 
     /**
@@ -289,18 +319,28 @@ class Player(
             }
             PlayerState.GRABBING -> {
                 stateTimer -= dt
-                checkCombatCollisions(enemies)
+                val target = grabTargetEnemy
+                val progress = (1f - stateTimer / grabDuration).coerceIn(0f, 1f)
 
-                if (inputX != 0f) {
-                    facing = if (inputX > 0) Facing.RIGHT else Facing.LEFT
-                    vx = inputX * moveSpeed * 0.65f
-                } else {
+                // Latch when the animated pin has nearly reached its selected target.
+                if (target != null && target.isAlive && !target.isGrabbed && progress >= 0.78f) {
+                    target.isGrabbed = true
+                    target.takeDamage(5)
+                    grabbedEnemy = target
+                    grabTargetEnemy = null
+                    state = PlayerState.HOLDING_ENEMY
+                    stateTimer = 0.20f
+                    activeHitbox = null
                     vx = 0f
-                }
-
-                if (stateTimer <= 0f && state == PlayerState.GRABBING) {
+                } else if (stateTimer <= 0f) {
+                    grabTargetEnemy = null
                     activeHitbox = null
                     state = if (isGrounded) PlayerState.IDLE else PlayerState.FALLING
+                } else if (inputX != 0f) {
+                    facing = if (inputX > 0) Facing.RIGHT else Facing.LEFT
+                    vx = inputX * moveSpeed * 0.25f
+                } else {
+                    vx = 0f
                 }
             }
             PlayerState.HOLDING_ENEMY -> {
@@ -747,26 +787,47 @@ class Player(
                 }
             }
             PlayerState.GRABBING, PlayerState.HOLDING_ENEMY -> {
-                // The hook reaches out in a quick arc instead of popping into place.
-                val progress = if (state == PlayerState.GRABBING)
-                    (1f - stateTimer / 0.25f).coerceIn(0f, 1f) else 1f
-                val reach = if (state == PlayerState.HOLDING_ENEMY) 50f else 18f + 38f * (1f - (1f - progress) * (1f - progress))
-                val lift = if (state == PlayerState.HOLDING_ENEMY) 0f else sin(progress * 3.1415927f) * 7f
-                val tipX = pinOriginX + dir * reach
-                val hook = Path()
-                hook.moveTo(pinOriginX - dir * 10f, pinOriginY + 4f)
-                hook.quadTo(pinOriginX + dir * (reach * 0.55f), pinOriginY - 15f - lift, tipX, pinOriginY + 9f)
-                hook.quadTo(tipX - dir * 13f, pinOriginY + 22f, tipX - dir * 20f, pinOriginY + 12f)
+                val isGrabbing = state == PlayerState.GRABBING
+                val progress = if (isGrabbing)
+                    (1f - stateTimer / grabDuration).coerceIn(0f, 1f) else 1f
+                val target = if (isGrabbing) grabTargetEnemy else grabbedEnemy
+                val targetX = target?.x ?: (x + grabDirectionX * 300f)
+                val targetY = target?.let { it.y - it.height * 0.5f } ?: (pinOriginY + grabDirectionY * 300f)
+                val fullDx = targetX - pinOriginX
+                val fullDy = targetY - pinOriginY
+                val reach = if (isGrabbing) progress * progress * (3f - 2f * progress) else 1f
+                val tipX = pinOriginX + fullDx * reach
+                val tipY = pinOriginY + fullDy * reach
+                val bendX = pinOriginX + fullDx * reach * 0.55f
+                val bendY = pinOriginY + fullDy * reach * 0.55f - sin(progress * 3.1415927f) * 13f
+
+                // A flexible, elongated bronze shaft tracks the chosen enemy in any direction.
                 paint.style = Paint.Style.STROKE
+                paint.strokeCap = Paint.Cap.ROUND
                 paint.strokeWidth = 5f
                 paint.color = Color.rgb(215, 175, 100)
-                canvas.drawPath(hook, paint)
-                // A small warm glint sells the clasp snapping shut on contact.
-                if (state == PlayerState.HOLDING_ENEMY) {
+                canvas.drawLine(pinOriginX - grabDirectionX * 10f, pinOriginY + 4f, bendX, bendY, paint)
+                paint.strokeWidth = 3f
+                paint.color = Color.rgb(255, 218, 145)
+                canvas.drawLine(bendX, bendY, tipX, tipY, paint)
+
+                // Hooked clasp at the tip, rotated to follow the extension direction.
+                val angle = kotlin.math.atan2(fullDy, fullDx)
+                val hookLength = 17f
+                val hookAngle = angle + 2.45f
+                val hookEndX = tipX + cos(hookAngle) * hookLength
+                val hookEndY = tipY + sin(hookAngle) * hookLength
+                paint.strokeWidth = 5f
+                paint.color = Color.rgb(190, 140, 70)
+                canvas.drawLine(tipX, tipY, hookEndX, hookEndY, paint)
+                canvas.drawCircle(tipX, tipY, 4f, paint)
+
+                if (!isGrabbing) {
                     paint.strokeWidth = 2f
                     paint.color = Color.rgb(255, 225, 150)
-                    canvas.drawLine(tipX - dir * 4f, pinOriginY + 3f, tipX + dir * 4f, pinOriginY + 11f, paint)
+                    canvas.drawCircle(tipX, tipY, 8f, paint)
                 }
+
                 paint.style = Paint.Style.FILL
                 paint.color = Color.rgb(150, 110, 55)
                 canvas.drawCircle(pinOriginX - dir * 12f, pinOriginY, 8f, paint)
