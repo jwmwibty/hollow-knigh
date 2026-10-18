@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
+import com.devdgames.hollowknightbutmine.game.EnemyType
 
 /** A doorway out of a room. Walking into [rect] moves the player to another room. */
 class RoomExit(
@@ -16,7 +17,12 @@ class RoomExit(
 )
 
 /** Where a room wants enemies to stand when it is loaded. */
-class EnemySpawn(val x: Float, val y: Float, val boss: Boolean = false)
+class EnemySpawn(
+    val x: Float,
+    val y: Float,
+    val boss: Boolean = false,
+    val type: EnemyType? = null
+)
 
 /**
  * One screen-sized area of the map.

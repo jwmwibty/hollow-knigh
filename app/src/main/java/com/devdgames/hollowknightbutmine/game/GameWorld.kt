@@ -99,7 +99,7 @@ class GameWorld {
 
         // Spawn room enemies
         for (spawn in room.enemySpawns) {
-            val enemyType = when {
+            val enemyType = spawn.type ?: when {
                 spawn.boss -> EnemyType.MOSS_CHARGER
                 spawn.y < 250f -> EnemyType.FLYER
                 spawn.x in 1100f..1400f && roomId == "mossy_bridge" -> EnemyType.SPITTER
