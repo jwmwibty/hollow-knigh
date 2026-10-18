@@ -159,6 +159,7 @@ class MossyBridgeRoom : Room(
         paint.style = Paint.Style.FILL
         paint.shader = null
         paint.color = EnvPalette.mossFar
+        canvas.drawRect(bounds.left, 620f, bounds.right, 1600f, paint)
         canvas.drawPath(farRidge, paint)
         for (i in 0..6) {
             val ox = 260f + i * 640f
@@ -171,6 +172,7 @@ class MossyBridgeRoom : Room(
         val sxMid = beginLayer(canvas, 0.30f, camX, camY, viewW)
         paint.style = Paint.Style.FILL
         paint.color = EnvPalette.mossMidLayer
+        canvas.drawRect(bounds.left, 610f, bounds.right, 1600f, paint)
         canvas.drawPath(midRidge, paint)
         drawFarFungi(canvas, paint)
         // Distant bridge silhouette (deck + towers) behind the real bridge.

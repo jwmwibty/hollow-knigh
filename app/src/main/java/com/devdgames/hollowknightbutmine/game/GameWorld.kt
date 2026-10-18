@@ -356,6 +356,15 @@ class GameWorld {
                 player.flashTimer = 0f
                 player.activeHitbox = null
                 player.grabbedEnemy = null
+                // Snap the camera to the bench instead of gliding across the map.
+                val maxSnapX = (worldRight - screenWidth).coerceAtLeast(worldLeft)
+                cameraX = (player.x - screenWidth / 2f).coerceIn(worldLeft, maxSnapX)
+                val worldHgtSnap = WORLD_BOTTOM - WORLD_TOP
+                cameraY = if (screenHeight >= worldHgtSnap) {
+                    WORLD_TOP - (screenHeight - worldHgtSnap) * 0.5f
+                } else {
+                    (player.y - screenHeight * 0.62f).coerceIn(WORLD_TOP, WORLD_BOTTOM - screenHeight)
+                }
             }
         }
 

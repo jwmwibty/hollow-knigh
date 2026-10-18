@@ -202,6 +202,7 @@ class DarkRibsRoom : Room(
         paint.style = Paint.Style.FILL
         paint.shader = null
         paint.color = EnvPalette.boneFar
+        canvas.drawRect(bounds.left, 620f, bounds.right, 1600f, paint)
         canvas.drawPath(farRidge, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
@@ -221,6 +222,7 @@ class DarkRibsRoom : Room(
         beginLayer(canvas, 0.30f, camX, camY, viewW)
         paint.style = Paint.Style.FILL
         paint.color = EnvPalette.boneMidLayer
+        canvas.drawRect(bounds.left, 610f, bounds.right, 1600f, paint)
         canvas.drawPath(midRidge, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 20f

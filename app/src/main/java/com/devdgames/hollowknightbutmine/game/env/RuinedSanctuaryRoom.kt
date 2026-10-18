@@ -174,6 +174,7 @@ class RuinedSanctuaryRoom : Room(
         paint.style = Paint.Style.FILL
         paint.shader = null
         paint.color = EnvPalette.sanctFar
+        canvas.drawRect(bounds.left, 620f, bounds.right, 1600f, paint)
         canvas.drawPath(farRidge, paint)
         canvas.drawPath(farTowers, paint)
         drawRoseWindow(canvas, paint, 4080f, 215f, sxFar, t)
