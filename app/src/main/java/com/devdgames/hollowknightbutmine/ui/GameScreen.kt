@@ -86,7 +86,7 @@ fun GameScreen(
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Text(
-                    "⌨️ PC: [A/D] Move  [SPACE] Jump  [Q] Dash  [L-CLICK] Stab  [R-CLICK] Parry  [F] Grab/Headbutt  [E] Heal",
+                    "⌨️ PC: [A/D] Move  [SPACE] Jump  [Q] Dash  [L-CLICK] Stab  [R-CLICK] Parry  [F] Grab (auto-headbutt)  [E] Heal",
                     color = Color(0xFFD0DCE8),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
@@ -233,13 +233,12 @@ fun CombatActionButtons(
                 onClick = { gameView?.world?.player?.stab() }
             )
 
-            // Grab / Headbutt (Safety Pin Clasp Hook -> Headbutt smash)
-            val isHolding = gameView?.world?.player?.state == PlayerState.HOLDING_ENEMY
+            // Grab pulls enemies in, then the player headbutts automatically.
             ActionButton(
-                label = if (isHolding) "💥" else "🪝",
-                subLabel = if (isHolding) "HEADBUTT" else "GRAB",
+                label = "🪝",
+                subLabel = "GRAB",
                 size = 68.dp,
-                accentColor = if (isHolding) Color(0xFFFF7043) else Color(0xFFFFAB91),
+                accentColor = Color(0xFFFFAB91),
                 onClick = { gameView?.world?.player?.grab() }
             )
         }
