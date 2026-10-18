@@ -9,6 +9,7 @@ import com.devdgames.hollowknightbutmine.game.env.MossyBridgeRoom
 import com.devdgames.hollowknightbutmine.game.env.Room
 import com.devdgames.hollowknightbutmine.game.env.RuinedSanctuaryRoom
 import kotlin.random.Random
+import kotlin.math.abs
 
 /**
  * Dust / Spark / Hit particle
@@ -42,9 +43,15 @@ class GameWorld {
     val platforms = mutableListOf<RectF>()
     val particles = mutableListOf<Particle>()
 
-    // Room System
+    // The map is authored as three connected biomes, but played as one continuous world.
+    private data class RoomPlacement(val room: Room, val offsetX: Float)
     private val rooms = mutableMapOf<String, Room>()
+    private val roomPlacements = ArrayList<RoomPlacement>()
+    private val worldHazards = ArrayList<RectF>()
     var currentRoom: Room? = null
+    private var activeRoomId: String? = null
+    private var worldLeft = -100f
+    private var worldRight = 13800f
     var gameTime = 0f
 
     // Camera viewport offset
@@ -62,7 +69,7 @@ class GameWorld {
 
     init {
         registerRooms()
-        loadRoom("mossy_bridge", 140f, 460f)
+        loadContinuousWorld()
     }
 
     private fun registerRooms() {
@@ -79,59 +86,105 @@ class GameWorld {
         rooms[r3.id] = r3
     }
 
-    fun loadRoom(roomId: String, targetX: Float, targetY: Float) {
-        val room = rooms[roomId] ?: return
-        currentRoom = room
+    /**
+     * Loads every biome into one shared coordinate space. Room art stays authored locally;
+     * collision, enemies, camera and player all use world coordinates.
+     */
+    private fun loadContinuousWorld(startRoomId: String = "mossy_bridge") {
+        roomPlacements.clear()
+        roomPlacements.add(RoomPlacement(rooms.getValue("mossy_bridge"), 0f))
+        roomPlacements.add(RoomPlacement(rooms.getValue("dark_ribs"), 4400f))
+        roomPlacements.add(RoomPlacement(rooms.getValue("ruined_sanctuary"), 9000f))
 
-        // Clear room entities
         enemies.clear()
         projectiles.clear()
         platforms.clear()
+        worldHazards.clear()
+        particles.clear()
 
-        // Sync platform collision
-        platforms.addAll(room.platforms)
+        worldLeft = roomPlacements.first().room.bounds.left
+        val lastPlacement = roomPlacements.last()
+        worldRight = lastPlacement.offsetX + lastPlacement.room.bounds.right
 
-        // Position player
-        player.x = targetX
-        player.y = targetY
-        player.vx = 0f
-        player.vy = 0f
+        for (placement in roomPlacements) {
+            val room = placement.room
+            val offset = placement.offsetX
 
-        // Spawn room enemies
-        for (spawn in room.enemySpawns) {
-            val enemyType = spawn.type ?: when {
-                spawn.boss -> EnemyType.MOSS_CHARGER
-                spawn.y < 250f -> EnemyType.FLYER
-                spawn.x in 1100f..1400f && roomId == "mossy_bridge" -> EnemyType.SPITTER
-                spawn.x in 1300f..1400f && roomId == "dark_ribs" -> EnemyType.SPITTER
-                spawn.x in 550f..650f && roomId == "ruined_sanctuary" -> EnemyType.SPITTER
-                spawn.x in 1600f..1700f && roomId == "mossy_bridge" -> EnemyType.SHIELDER
-                spawn.x in 1000f..1100f && roomId == "dark_ribs" -> EnemyType.SHIELDER
-                spawn.x in 1300f..1400f && roomId == "ruined_sanctuary" -> EnemyType.SHIELDER
-                else -> EnemyType.CRAWLER
-            }
-
-            val enemy = Enemy(x = spawn.x, y = spawn.y, type = enemyType, isBoss = spawn.boss)
-            if (enemyType == EnemyType.SPITTER) {
-                enemy.onShootProjectile = { px, py, pvx, pvy ->
-                    projectiles.add(Projectile(x = px, y = py, vx = pvx, vy = pvy))
-                    spawnSparks(px, py, 6, Color.rgb(255, 180, 40))
+            // Remove only the old per-room side walls. The outer world gets its own walls below.
+            for (local in room.platforms) {
+                val isSideWall = local.height() > 800f &&
+                    (abs(local.left - room.bounds.left) < 1f ||
+                     abs(local.right - room.bounds.right) < 1f)
+                if (!isSideWall) {
+                    platforms.add(RectF(local.left + offset, local.top, local.right + offset, local.bottom))
                 }
             }
-            enemies.add(enemy)
+
+            for (hazard in room.hazards) {
+                worldHazards.add(RectF(hazard.left + offset, hazard.top, hazard.right + offset, hazard.bottom))
+            }
+
+            for (spawn in room.enemySpawns) {
+                val enemyType = spawn.type ?: when {
+                    spawn.boss -> EnemyType.MOSS_CHARGER
+                    spawn.y < 250f -> EnemyType.FLYER
+                    spawn.x in 1100f..1400f && room.id == "mossy_bridge" -> EnemyType.SPITTER
+                    spawn.x in 1300f..1400f && room.id == "dark_ribs" -> EnemyType.SPITTER
+                    spawn.x in 550f..650f && room.id == "ruined_sanctuary" -> EnemyType.SPITTER
+                    spawn.x in 1600f..1700f && room.id == "mossy_bridge" -> EnemyType.SHIELDER
+                    spawn.x in 1000f..1100f && room.id == "dark_ribs" -> EnemyType.SHIELDER
+                    spawn.x in 1300f..1400f && room.id == "ruined_sanctuary" -> EnemyType.SHIELDER
+                    else -> EnemyType.CRAWLER
+                }
+
+                val enemy = Enemy(
+                    x = spawn.x + offset,
+                    y = spawn.y,
+                    type = enemyType,
+                    isBoss = spawn.boss
+                )
+                if (enemyType == EnemyType.SPITTER) {
+                    enemy.onShootProjectile = { px, py, pvx, pvy ->
+                        projectiles.add(Projectile(x = px, y = py, vx = pvx, vy = pvy))
+                        spawnSparks(px, py, 6, Color.rgb(255, 180, 40))
+                    }
+                }
+                enemies.add(enemy)
+            }
         }
 
-        // Display room title announcement
-        showCombatText(room.title, Color.rgb(220, 245, 240))
+        // Keep the entire connected map enclosed, not each biome individually.
+        platforms.add(RectF(worldLeft - 80f, -500f, worldLeft, 900f))
+        platforms.add(RectF(worldRight, -500f, worldRight + 100f, 900f))
+
+        val start = roomPlacements.firstOrNull { it.room.id == startRoomId } ?: roomPlacements.first()
+        currentRoom = start.room
+        activeRoomId = start.room.id
+        player.x = start.offsetX + start.room.spawnX
+        player.y = start.room.spawnY
+        player.vx = 0f
+        player.vy = 0f
+        player.state = PlayerState.IDLE
+        player.activeHitbox = null
+        player.grabbedEnemy = null
+        player.isGrounded = false
+        cameraX = (player.x - 420f).coerceIn(worldLeft, worldRight - 1f)
+        cameraY = player.y - 300f
+        showCombatText(start.room.title, Color.rgb(220, 245, 240))
+    }
+
+    private fun placementForX(worldX: Float): RoomPlacement {
+        for (placement in roomPlacements.asReversed()) {
+            if (worldX >= placement.offsetX) return placement
+        }
+        return roomPlacements.first()
     }
 
     fun reset() {
-        val room = currentRoom ?: return
-        loadRoom(room.id, room.spawnX, room.spawnY)
+        val startZone = placementForX(player.x)
+        loadContinuousWorld(startZone.room.id)
         player.currentMasks = player.maxMasks
         player.soul = 33
-        player.state = PlayerState.IDLE
-        player.grabbedEnemy = null
     }
 
     fun triggerShake(intensity: Float, duration: Float) {
@@ -250,32 +303,34 @@ class GameWorld {
             }
         }
 
-        // Check room exits
-        val room = currentRoom
-        if (room != null) {
-            val playerBox = player.getBoundingBox()
+        // Walk across biome boundaries without teleporting or reloading the room.
+        val zone = placementForX(player.x)
+        if (zone.room.id != activeRoomId) {
+            activeRoomId = zone.room.id
+            currentRoom = zone.room
+            showCombatText(zone.room.title, Color.rgb(220, 245, 240))
+        }
 
-            // Check doors / transitions to other rooms
-            for (exit in room.exits) {
-                if (RectF.intersects(playerBox, exit.rect)) {
-                    loadRoom(exit.targetRoomId, exit.targetX, exit.targetY)
-                    return
-                }
+        // Water and spike hazards remain active after the biomes are joined.
+        val playerBox = player.getBoundingBox()
+        var hitHazard = false
+        for (haz in worldHazards) {
+            if (RectF.intersects(playerBox, haz)) {
+                hitHazard = true
+                break
             }
-
-            // Check water / spike hazards
-            for (haz in room.hazards) {
-                if (RectF.intersects(playerBox, haz)) {
-                    player.takeDamage(1)
-                    player.x = room.spawnX
-                    player.y = room.spawnY
-                    player.vx = 0f
-                    player.vy = 0f
-                    triggerShake(10f, 0.3f)
-                    spawnSparks(player.x, player.y, 16, Color.rgb(240, 80, 80))
-                    break
-                }
-            }
+        }
+        if (hitHazard || player.y > 900f) {
+            player.grabbedEnemy?.isGrabbed = false
+            player.grabbedEnemy = null
+            player.x = zone.offsetX + zone.room.spawnX
+            player.y = zone.room.spawnY
+            player.vx = 0f
+            player.vy = 0f
+            player.state = PlayerState.IDLE
+            player.activeHitbox = null
+            triggerShake(10f, 0.3f)
+            spawnSparks(player.x, player.y, 16, Color.rgb(240, 80, 80))
         }
 
         // Screen shake decay
@@ -290,60 +345,61 @@ class GameWorld {
 
         gameTime += dt
 
-        // Smooth Camera Follow Player
-        val targetCamX = player.x - screenWidth / 2f
+        // Camera follows through the full connected world and stops at its outer edges.
+        val maxCameraX = (worldRight - screenWidth).coerceAtLeast(worldLeft)
+        val targetCamX = (player.x - screenWidth / 2f).coerceIn(worldLeft, maxCameraX)
         val targetCamY = player.y - screenHeight * 0.62f
         cameraX += (targetCamX - cameraX) * 8f * dt
+        cameraX = cameraX.coerceIn(worldLeft, maxCameraX)
         cameraY += (targetCamY - cameraY) * 8f * dt
     }
 
     fun draw(canvas: Canvas, paint: Paint, screenWidth: Float, screenHeight: Float) {
-        val room = currentRoom
-
-        // 1. Draw Room Backdrop (screen-space parallax)
-        room?.drawBackdrop(canvas, paint, cameraX, cameraY, screenWidth, screenHeight, gameTime)
+        // One continuous parallax backdrop. The first biome paints the shared void gradient;
+        // the following biomes add their silhouettes into that same background.
+        for ((index, placement) in roomPlacements.withIndex()) {
+            canvas.save()
+            if (index > 0) canvas.translate(placement.offsetX * 0.25f, 0f)
+            placement.room.drawBackdrop(canvas, paint, cameraX, cameraY, screenWidth, screenHeight, gameTime)
+            canvas.restore()
+        }
 
         canvas.save()
-
-        // Apply screen shake
         var shakeOffsetX = 0f
         var shakeOffsetY = 0f
         if (screenShakeTime > 0f) {
             shakeOffsetX = (Random.nextFloat() - 0.5f) * screenShakeIntensity * 2f
             shakeOffsetY = (Random.nextFloat() - 0.5f) * screenShakeIntensity * 2f
         }
-
         canvas.translate(-cameraX + shakeOffsetX, -cameraY + shakeOffsetY)
 
-        // 2. Draw Room World Geometry (slabs, ruins, shrines, water)
-        room?.drawWorld(canvas, paint, gameTime)
-
-        // 3. Draw Enemies
-        for (enemy in enemies) {
-            enemy.draw(canvas, paint)
+        // Draw all biome geometry in the shared world coordinate system.
+        for (placement in roomPlacements) {
+            canvas.save()
+            canvas.translate(placement.offsetX, 0f)
+            placement.room.drawWorld(canvas, paint, gameTime)
+            canvas.restore()
         }
 
-        // 3.5 Draw Projectiles
-        for (proj in projectiles) {
-            proj.draw(canvas, paint)
-        }
-
-        // 4. Draw Player
+        for (enemy in enemies) enemy.draw(canvas, paint)
+        for (proj in projectiles) proj.draw(canvas, paint)
         player.draw(canvas, paint)
 
-        // 5. Draw Particles
         paint.style = Paint.Style.FILL
-        for (p in particles) {
-            paint.color = p.color
-            canvas.drawCircle(p.x, p.y, p.radius, paint)
+        for (particle in particles) {
+            paint.color = particle.color
+            canvas.drawCircle(particle.x, particle.y, particle.radius, paint)
         }
-
         canvas.restore()
 
-        // 6. Draw Room Front Layer (volumetric God rays, light shafts, drifting spores, vignette)
-        room?.drawFront(canvas, paint, cameraX, cameraY, screenWidth, screenHeight, gameTime)
-
-        // 7. Draw HUD (Masks + Soul Vessel + Combat Banners) on top
+        // Front-layer particles, light shafts and edge vignettes scroll with each biome.
+        for (placement in roomPlacements) {
+            placement.room.drawFront(
+                canvas, paint,
+                cameraX - placement.offsetX, cameraY,
+                screenWidth, screenHeight, gameTime
+            )
+        }
         drawHUD(canvas, paint, screenWidth, screenHeight)
     }
 
