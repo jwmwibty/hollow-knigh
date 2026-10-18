@@ -40,6 +40,8 @@ class Player(
 
     // Cooldowns and action timers
     var stateTimer = 0f
+    // Continuous clock for lightweight procedural character animation.
+    private var animationTime = 0f
     var dashCooldown = 0f
     var canDashInAir = true
     var invincibilityTimer = 0f
@@ -208,6 +210,7 @@ class Player(
         enemies: List<Enemy>,
         onParryTriggered: (() -> Unit)? = null
     ) {
+        animationTime += dt
         if (invincibilityTimer > 0f) invincibilityTimer -= dt
         if (flashTimer > 0f) flashTimer -= dt
         if (dashCooldown > 0f) dashCooldown -= dt
@@ -454,12 +457,14 @@ class Player(
         val capeTopY = y - height * 0.65f
         cape.moveTo(capeTopX, capeTopY)
 
-        // Flowing tattered cape points billowing backwards
+        // Cape responds to movement and action, rather than staying rigid.
+        val moving = abs(vx) > 20f || state == PlayerState.DASHING || state == PlayerState.JUMPING || state == PlayerState.FALLING
+        val flutter = sin(animationTime * (if (moving) 13f else 3.5f)) * (if (moving) 7f else 2.5f)
         val capeBackDir = -dir
-        cape.quadTo(x + capeBackDir * 24f, y - height * 0.45f, x + capeBackDir * 32f, y - 6f)
-        // Ragged shredded hem points
-        cape.lineTo(x + capeBackDir * 28f, y - 14f)
-        cape.lineTo(x + capeBackDir * 22f, y - 2f)
+        cape.quadTo(x + capeBackDir * (24f + flutter), y - height * 0.45f, x + capeBackDir * (32f + flutter), y - 6f + flutter * 0.35f)
+        // Ragged hem flexes as the character moves.
+        cape.lineTo(x + capeBackDir * (28f + flutter), y - 14f)
+        cape.lineTo(x + capeBackDir * (22f + flutter * 0.6f), y - 2f + flutter * 0.25f)
         cape.lineTo(x + capeBackDir * 16f, y - 10f)
         cape.lineTo(x + capeBackDir * 10f, y - 2f)
         cape.lineTo(x, y - height * 0.25f)
@@ -480,10 +485,13 @@ class Player(
 
         // Dark baggy charcoal ninja pants
         paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
+        // Two-frame procedural stride: legs swing opposite each other while running.
+        val stride = if (state == PlayerState.RUNNING) sin(animationTime * 17f) * 6f else 0f
+        val airborneTuck = if (state == PlayerState.JUMPING || state == PlayerState.FALLING || state == PlayerState.DASHING) 3f else 0f
         // Left leg
-        canvas.drawRoundRect(x - 11f, y - 24f, x - 2f, y - 8f, 3f, 3f, paint)
+        canvas.drawRoundRect(x - 11f - stride, y - 24f + airborneTuck, x - 2f - stride, y - 8f + airborneTuck, 3f, 3f, paint)
         // Right leg
-        canvas.drawRoundRect(x + 2f, y - 24f, x + 11f, y - 8f, 3f, 3f, paint)
+        canvas.drawRoundRect(x + 2f + stride, y - 24f - airborneTuck, x + 11f + stride, y - 8f - airborneTuck, 3f, 3f, paint)
 
         // Strapped leather boots
         paint.color = if (isFlashing) Color.WHITE else Color.rgb(22, 18, 22)
@@ -544,8 +552,10 @@ class Player(
     private fun drawRoundHead(canvas: Canvas, paint: Paint, dir: Float, isFlashing: Boolean) {
         // Head moves forward slightly during Headbutt attack
         val headOffsetX = dir * (if (state == PlayerState.HEADBUTTING) 16f else 0f)
+        val runBob = if (state == PlayerState.RUNNING) abs(sin(animationTime * 17f)) * 2.5f else 0f
+        val jumpTilt = if (state == PlayerState.JUMPING) -2f else if (state == PlayerState.FALLING) 2f else 0f
         val headCenterX = x + headOffsetX
-        val headCenterY = y - height * 0.82f
+        val headCenterY = y - height * 0.82f + runBob + jumpTilt
         val headRadius = 16f
 
         // Perfectly round ivory/bone skull
