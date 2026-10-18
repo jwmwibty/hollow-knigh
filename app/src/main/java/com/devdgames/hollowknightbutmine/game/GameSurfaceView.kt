@@ -62,7 +62,7 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             }
             KeyEvent.KEYCODE_F -> {
                 if (event.repeatCount == 0) {
-                    world.player.grab()
+                    world.player.grab(world.enemies)
                 }
                 return true
             }
