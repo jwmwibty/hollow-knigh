@@ -613,43 +613,52 @@ class Player(
 
         when (state) {
             PlayerState.STABBING -> {
-                // Giant pin lunging forward
-                val reach = 58f
-                val tipX = pinOriginX + dir * reach
+                // Three-beat thrust: draw back, snap forward, then recoil.
+                val progress = (1f - stateTimer / 0.22f).coerceIn(0f, 1f)
+                val thrust = when {
+                    progress < 0.22f -> -10f * (progress / 0.22f)
+                    progress < 0.58f -> -10f + 78f * ((progress - 0.22f) / 0.36f)
+                    else -> 68f * (1f - (progress - 0.58f) / 0.42f)
+                }
+                val tipX = pinOriginX + dir * (26f + thrust)
                 val tipY = pinOriginY - 2f
-
-                // Pin shaft
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 5f
-                paint.color = Color.rgb(205, 160, 90) // Bronze shaft
-                canvas.drawLine(pinOriginX - dir * 14f, pinOriginY, tipX, tipY, paint)
-
-                // Clasp head at back
+                paint.color = Color.rgb(205, 160, 90)
+                canvas.drawLine(pinOriginX - dir * 14f, pinOriginY + 3f, tipX, tipY, paint)
                 paint.style = Paint.Style.FILL
                 paint.color = Color.rgb(160, 120, 60)
-                canvas.drawRoundRect(pinOriginX - dir * 22f, pinOriginY - 8f, pinOriginX - dir * 10f, pinOriginY + 8f, 4f, 4f, paint)
-
-                // Needle tip sparkle
-                paint.color = Color.WHITE
-                paint.strokeWidth = 2.5f
-                canvas.drawLine(tipX, tipY - 14f, tipX + dir * 16f, tipY + 14f, paint)
+                canvas.drawRoundRect(pinOriginX - dir * 22f, pinOriginY - 5f, pinOriginX - dir * 10f, pinOriginY + 11f, 4f, 4f, paint)
+                // Brief impact glint only near the end of the thrust.
+                if (progress in 0.42f..0.66f) {
+                    paint.style = Paint.Style.STROKE
+                    paint.color = Color.rgb(255, 235, 175)
+                    paint.strokeWidth = 2.5f
+                    canvas.drawLine(tipX, tipY - 7f, tipX + dir * 9f, tipY + 7f, paint)
+                    canvas.drawLine(tipX + dir * 2f, tipY - 9f, tipX + dir * 2f, tipY + 9f, paint)
+                }
             }
             PlayerState.GRABBING, PlayerState.HOLDING_ENEMY -> {
-                // Hooked clasp unlatched
+                // The hook reaches out in a quick arc instead of popping into place.
+                val progress = if (state == PlayerState.GRABBING)
+                    (1f - stateTimer / 0.25f).coerceIn(0f, 1f) else 1f
+                val reach = if (state == PlayerState.HOLDING_ENEMY) 50f else 18f + 38f * (1f - (1f - progress) * (1f - progress))
+                val lift = if (state == PlayerState.HOLDING_ENEMY) 0f else sin(progress * Math.PI).toFloat() * 7f
+                val tipX = pinOriginX + dir * reach
+                val hook = Path()
+                hook.moveTo(pinOriginX - dir * 10f, pinOriginY + 4f)
+                hook.quadTo(pinOriginX + dir * (reach * 0.55f), pinOriginY - 15f - lift, tipX, pinOriginY + 9f)
+                hook.quadTo(tipX - dir * 13f, pinOriginY + 22f, tipX - dir * 20f, pinOriginY + 12f)
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 5f
                 paint.color = Color.rgb(215, 175, 100)
-
-                val reach = 50f
-                val tipX = pinOriginX + dir * reach
-                val hook = Path()
-                hook.moveTo(pinOriginX - dir * 10f, pinOriginY)
-                hook.lineTo(tipX - dir * 6f, pinOriginY - 12f)
-                hook.lineTo(tipX, pinOriginY + 14f)
-                hook.lineTo(tipX - dir * 16f, pinOriginY + 16f)
                 canvas.drawPath(hook, paint)
-
-                // Back coil
+                // A small warm glint sells the clasp snapping shut on contact.
+                if (state == PlayerState.HOLDING_ENEMY) {
+                    paint.strokeWidth = 2f
+                    paint.color = Color.rgb(255, 225, 150)
+                    canvas.drawLine(tipX - dir * 4f, pinOriginY + 3f, tipX + dir * 4f, pinOriginY + 11f, paint)
+                }
                 paint.style = Paint.Style.FILL
                 paint.color = Color.rgb(150, 110, 55)
                 canvas.drawCircle(pinOriginX - dir * 12f, pinOriginY, 8f, paint)
