@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -851,34 +853,50 @@ class Player(
                 canvas.drawCircle(guardX, pinOriginY - 32f, 7f, paint)
             }
             else -> {
-                // Idle / Running: Wielded over shoulder / diagonally strapped across back
-                val angleDir = dir
-                val backX = pinOriginX - angleDir * 20f
-                val backY = pinOriginY - 26f
-                val frontX = pinOriginX + angleDir * 24f
-                val frontY = pinOriginY + 20f
-
-                // Main bronze shaft
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 4.5f
-                paint.color = Color.rgb(195, 150, 80) // Weathered bronze
-                canvas.drawLine(backX, backY, frontX, frontY, paint)
-
-                // Large clasp at bottom front (like reference art)
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 3f
-                paint.color = Color.rgb(160, 120, 60)
-                val claspRect = RectF(frontX - 4f, frontY - 3f, frontX + angleDir * 18f, frontY + 18f)
-                canvas.drawRoundRect(claspRect, 6f, 6f, paint)
-                // Inner hollow opening of safety pin clasp
-                canvas.drawCircle(frontX + angleDir * 8f, frontY + 7f, 3.5f, paint)
-
-                // Large spring coil loop at the top back
-                paint.strokeWidth = 3.5f
-                canvas.drawCircle(backX, backY, 7.5f, paint)
-                canvas.drawPoint(backX, backY, paint)
+                drawStaff(canvas, paint, dir)
             }
         }
+    }
+
+    /**
+     * Slim curved bronze staff for the player's idle and movement pose.
+     * Combat states keep their dedicated thrust, grab and parry animations.
+     */
+    private fun drawStaff(canvas: Canvas, paint: Paint, dir: Float) {
+        val staffLength = 40f
+        val baseX = x + dir * 5f
+        val baseY = y - height * 0.4f
+        val tipX = baseX + dir * 4f
+        val tipY = baseY - staffLength
+        val path = Path().apply {
+            moveTo(baseX, baseY)
+            cubicTo(
+                baseX + dir * 2f, baseY - 10f,
+                baseX + dir * 8f, baseY - 20f,
+                tipX, tipY
+            )
+        }
+
+        paint.shader = LinearGradient(
+            baseX, baseY, tipX, tipY,
+            Color.rgb(180, 130, 60),
+            Color.rgb(120, 80, 35),
+            Shader.TileMode.CLAMP
+        )
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = 4f
+        canvas.drawPath(path, paint)
+
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(210, 165, 95)
+        canvas.drawOval(
+            tipX - 3f, tipY - 4f,
+            tipX + 3f, tipY + 4f,
+            paint
+        )
+        paint.strokeCap = Paint.Cap.BUTT
     }
 
     private fun drawSpecialEffects(canvas: Canvas, paint: Paint) {
