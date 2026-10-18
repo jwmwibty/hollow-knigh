@@ -273,7 +273,7 @@ class GameWorld {
             player.activeHitbox = null
             player.grabbedEnemy?.isGrabbed = false
             player.grabbedEnemy = null
-            deathTimer = 1.15f
+            deathTimer = 2.2f
             triggerShake(12f, 0.35f)
         }
 
@@ -443,6 +443,70 @@ class GameWorld {
             )
         }
         drawHUD(canvas, paint, screenWidth, screenHeight)
+        if (player.state == PlayerState.DEAD) {
+            drawDefeatedScreen(canvas, paint, screenWidth, screenHeight)
+        }
+    }
+
+    /**
+     * Minimal, native Canvas death overlay. Kept as text and shapes so it scales cleanly
+     * on every display and doesn't depend on a bitmap asset.
+     */
+    private fun drawDefeatedScreen(
+        canvas: Canvas,
+        paint: Paint,
+        screenWidth: Float,
+        screenHeight: Float
+    ) {
+        val centerX = screenWidth / 2f
+        val centerY = screenHeight * 0.46f
+        val titleSize = (screenWidth * 0.055f).coerceIn(28f, 42f)
+
+        // Quietly dim the world without hiding the scene completely.
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(178, 4, 8, 16)
+        canvas.drawRect(0f, 0f, screenWidth, screenHeight, paint)
+
+        // Fine framing lines and a small central crest.
+        val lineY = centerY + titleSize * 0.72f
+        val lineHalf = (screenWidth * 0.17f).coerceAtMost(150f)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.4f
+        paint.color = Color.argb(205, 183, 205, 220)
+        canvas.drawLine(centerX - lineHalf, lineY, centerX - 15f, lineY, paint)
+        canvas.drawLine(centerX + 15f, lineY, centerX + lineHalf, lineY, paint)
+
+        paint.style = Paint.Style.FILL
+        val crest = android.graphics.Path().apply {
+            moveTo(centerX, lineY - 9f)
+            lineTo(centerX + 7f, lineY)
+            lineTo(centerX, lineY + 9f)
+            lineTo(centerX - 7f, lineY)
+            close()
+        }
+        canvas.drawPath(crest, paint)
+
+        // Normal-sized, elegant text with a restrained cool-white tint.
+        paint.typeface = android.graphics.Typeface.create(
+            android.graphics.Typeface.SERIF,
+            android.graphics.Typeface.NORMAL
+        )
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = titleSize
+        paint.color = Color.rgb(226, 234, 242)
+        paint.setShadowLayer(8f, 0f, 0f, Color.argb(100, 145, 190, 220))
+        canvas.drawText("Defeated", centerX, centerY, paint)
+        paint.clearShadowLayer()
+
+        paint.typeface = android.graphics.Typeface.DEFAULT
+        paint.textSize = 12f
+        paint.color = Color.argb(190, 169, 185, 199)
+        canvas.drawText("Returning to the last area", centerX, lineY + 30f, paint)
+
+        paint.textAlign = Paint.Align.LEFT
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        paint.strokeWidth = 1f
     }
 
     private fun drawHUD(canvas: Canvas, paint: Paint, screenWidth: Float, screenHeight: Float) {
