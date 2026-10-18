@@ -139,4 +139,48 @@ internal object EnvArt {
         for (i in n downTo 0) path.lineTo(rx[i], ry[i])
         path.close()
     }
+    /**
+     * Draws a small cluster of wind-swayed grass blades rooted at (x, y).
+     * Safe to call each frame: uses Canvas primitives without allocating paths.
+     */
+    fun drawGrassBlade(
+        canvas: Canvas,
+        paint: Paint,
+        x: Float,
+        baseY: Float,
+        height: Float,
+        sway: Float
+    ) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldStrokeWidth = paint.strokeWidth
+        val oldAlpha = paint.alpha
+        paint.shader = null
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = 2.2f
+        paint.alpha = 220
+        paint.color = Color.rgb(35, 112, 79)
+        canvas.drawLine(x, baseY, x - 3f + sway * 0.45f, baseY - height * 0.65f, paint)
+        paint.color = Color.rgb(63, 153, 96)
+        canvas.drawLine(x, baseY, x + sway, baseY - height, paint)
+        paint.color = Color.rgb(24, 83, 65)
+        canvas.drawLine(x + 1f, baseY, x + 5f + sway * 0.7f, baseY - height * 0.78f, paint)
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.strokeWidth = oldStrokeWidth
+        paint.alpha = oldAlpha
+        paint.strokeCap = Paint.Cap.BUTT
+        paint.shader = null
+    }
+
+    /**
+     * Draws three curved, wind-swayed grass blades on a ledge.
+     */
+    fun drawGrassPatch(canvas: Canvas, paint: Paint, x: Float, y: Float, wind: Float) {
+        drawGrassBlade(canvas, paint, x - 4f, y, 15f, wind * 0.55f - 2f)
+        drawGrassBlade(canvas, paint, x, y, 23f, wind)
+        drawGrassBlade(canvas, paint, x + 5f, y, 18f, wind * 0.75f + 2f)
+    }
+
 }
