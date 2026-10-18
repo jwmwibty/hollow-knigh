@@ -175,7 +175,8 @@ class GameWorld {
 
     private fun placementForX(worldX: Float): RoomPlacement {
         for (placement in roomPlacements.asReversed()) {
-            if (worldX >= placement.offsetX) return placement
+            // The next biome's floor starts at its local left bound, not at x=0.
+            if (worldX >= placement.offsetX + placement.room.bounds.left) return placement
         }
         return roomPlacements.first()
     }
