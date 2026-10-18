@@ -23,6 +23,7 @@ class MossyBridgeRoom : Room(
     private val lightShafts = ArrayList<LightShaft>()
     private val hangingTendrils = Path()
     private val shrinePath = Path()
+    private val distantCliffs = Path()
 
     override fun build() {
         spawnX = 140f
@@ -115,6 +116,18 @@ class MossyBridgeRoom : Room(
         shrinePath.cubicTo(sx + 80f, sy - 250f, sx + 95f, sy - 140f, sx + 85f, sy)
         shrinePath.close()
 
+        // Prebuild distant cavern silhouettes once to avoid per-frame allocations.
+        for (i in 0..22) {
+            val sx = i * 205f - 80f
+            val peak = 220f + ((i * 47) % 170)
+            distantCliffs.moveTo(sx, 620f)
+            distantCliffs.lineTo(sx + 42f, peak + 70f)
+            distantCliffs.lineTo(sx + 82f, peak)
+            distantCliffs.lineTo(sx + 126f, peak + 95f)
+            distantCliffs.lineTo(sx + 168f, 620f)
+            distantCliffs.close()
+        }
+
         // Ceiling Tendrils across the entire expanse
         for (i in 0..28) {
             val tx = i * 150f + 50f
@@ -142,18 +155,7 @@ class MossyBridgeRoom : Room(
         // Distant stalagmite skyline: layered shapes make the cavern feel deep.
         paint.style = Paint.Style.FILL
         paint.color = Color.rgb(5, 28, 27)
-        for (i in 0..22) {
-            val sx = i * 205f - 80f
-            val peak = 220f + ((i * 47) % 170)
-            val rock = Path()
-            rock.moveTo(sx, 620f)
-            rock.lineTo(sx + 42f, peak + 70f)
-            rock.lineTo(sx + 82f, peak)
-            rock.lineTo(sx + 126f, peak + 95f)
-            rock.lineTo(sx + 168f, 620f)
-            rock.close()
-            canvas.drawPath(rock, paint)
-        }
+        canvas.drawPath(distantCliffs, paint)
 
         // Giant fungal caps and glowing stems in the far distance.
         for (i in 0..10) {
