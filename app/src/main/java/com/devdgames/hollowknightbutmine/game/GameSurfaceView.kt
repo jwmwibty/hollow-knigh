@@ -33,6 +33,20 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
     }
 
     fun onKeyDownEvent(keyCode: Int, event: KeyEvent): Boolean {
+        // Map toggles work even while the map pauses the world.
+        when (keyCode) {
+            KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_TAB -> {
+                if (event.repeatCount == 0) world.toggleMap()
+                return true
+            }
+            KeyEvent.KEYCODE_ESCAPE -> {
+                if (world.mapOpen) {
+                    world.closeMap()
+                    return true
+                }
+            }
+        }
+        if (world.mapOpen) return false
         when (keyCode) {
             KeyEvent.KEYCODE_A -> {
                 isAPressed = true
