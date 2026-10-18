@@ -90,7 +90,8 @@ class Player(
             state != PlayerState.DASHING && state != PlayerState.HEADBUTTING) {
             // Second press in mid-air: punchy double jump with a fresh upward impulse.
             airJumpsUsed++
-            vy = jumpSpeed * 0.82f
+            // Stronger upward impulse makes the second jump feel like a real mid-air kick.
+            vy = jumpSpeed * 1.02f
             state = PlayerState.JUMPING
             stateTimer = 0.12f
             doubleJumpBurstTimer = 0.24f
@@ -512,12 +513,20 @@ class Player(
 
         // Cape responds to movement and action, rather than staying rigid.
         val moving = abs(vx) > 20f || state == PlayerState.DASHING || state == PlayerState.JUMPING || state == PlayerState.FALLING
-        val flutter = sin(animationTime * (if (moving) 13f else 3.5f)) * (if (moving) 7f else 2.5f)
+        val doubleJump = doubleJumpBurstTimer > 0f
+        val flutter = sin(animationTime * (if (doubleJump) 22f else if (moving) 13f else 3.5f)) *
+            (if (doubleJump) 12f else if (moving) 7f else 2.5f)
         val capeBackDir = -dir
-        cape.quadTo(x + capeBackDir * (24f + flutter), y - height * 0.45f, x + capeBackDir * (32f + flutter), y - 6f + flutter * 0.35f)
-        // Ragged hem flexes as the character moves.
-        cape.lineTo(x + capeBackDir * (28f + flutter), y - 14f)
-        cape.lineTo(x + capeBackDir * (22f + flutter * 0.6f), y - 2f + flutter * 0.25f)
+        val boostFlare = if (doubleJump) 18f * (doubleJumpBurstTimer / 0.24f) else 0f
+        cape.quadTo(
+            x + capeBackDir * (24f + flutter + boostFlare * 0.35f),
+            y - height * 0.45f + boostFlare * 0.2f,
+            x + capeBackDir * (32f + flutter + boostFlare),
+            y - 6f + flutter * 0.35f + boostFlare * 0.25f
+        )
+        // During the second jump the cape snaps wide, selling a sudden burst of force.
+        cape.lineTo(x + capeBackDir * (28f + flutter + boostFlare * 0.8f), y - 14f + boostFlare * 0.25f)
+        cape.lineTo(x + capeBackDir * (22f + flutter * 0.6f + boostFlare * 0.5f), y - 2f + flutter * 0.25f)
         cape.lineTo(x + capeBackDir * 16f, y - 10f)
         cape.lineTo(x + capeBackDir * 10f, y - 2f)
         cape.lineTo(x, y - height * 0.25f)
@@ -540,10 +549,11 @@ class Player(
         paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
         // Two-frame procedural stride: legs swing opposite each other while running.
         val stride = if (state == PlayerState.RUNNING) sin(animationTime * 17f) * 6f else 0f
-        val doubleJumpTuck = if (doubleJumpBurstTimer > 0f) sin((doubleJumpBurstTimer / 0.24f) * Math.PI).toFloat() * 5f else 0f
+        val doubleJumpTuck = if (doubleJumpBurstTimer > 0f) sin((doubleJumpBurstTimer / 0.24f) * Math.PI).toFloat() * 10f else 0f
         val airborneTuck = when {
             state == PlayerState.DASHING -> 6f
-            state == PlayerState.JUMPING -> 5f + sin(animationTime * 9f) * 1.5f + doubleJumpTuck
+            state == PlayerState.JUMPING && doubleJumpBurstTimer > 0f -> 12f + doubleJumpTuck
+            state == PlayerState.JUMPING -> 5f + sin(animationTime * 9f) * 1.5f
             state == PlayerState.FALLING -> 2f
             landingTimer > 0f -> -sin((landingTimer / 0.22f) * Math.PI).toFloat() * 3f
             else -> 0f
@@ -617,6 +627,7 @@ class Player(
         val headOffsetX = dir * (if (state == PlayerState.HEADBUTTING) 16f else 0f)
         val runBob = if (state == PlayerState.RUNNING) abs(sin(animationTime * 17f)) * 2.5f else 0f
         val jumpTilt = when {
+            state == PlayerState.JUMPING && doubleJumpBurstTimer > 0f -> -7f
             state == PlayerState.JUMPING -> -3.5f
             state == PlayerState.FALLING -> 3f
             state == PlayerState.DASHING -> 2f
@@ -818,28 +829,26 @@ class Player(
             }
         }
 
-        // Double-jump burst: a bright, expanding golden ring and outward pin-like streaks.
+        // Double-jump propulsion: sharp golden jets shoot DOWN from the boots,
+        // so the player looks like they're kicking off the air with extra force.
         if (doubleJumpBurstTimer > 0f) {
             val p = 1f - doubleJumpBurstTimer / 0.24f
-            val alpha = ((1f - p) * 210f).toInt().coerceIn(0, 210)
-            val cy = y - height * 0.45f
+            val alpha = ((1f - p) * 225f).toInt().coerceIn(0, 225)
             paint.style = Paint.Style.STROKE
-            paint.color = Color.argb(alpha, 255, 215, 105)
-            paint.strokeWidth = 3f
-            canvas.drawCircle(x, cy, 8f + p * 25f, paint)
-            paint.strokeWidth = 2.5f
-            for (i in 0..7) {
-                val angle = i * (Math.PI / 4.0)
-                val inner = 10f + p * 13f
-                val outer = inner + (1f - p) * 12f
-                canvas.drawLine(
-                    x + kotlin.math.cos(angle).toFloat() * inner,
-                    cy + kotlin.math.sin(angle).toFloat() * inner,
-                    x + kotlin.math.cos(angle).toFloat() * outer,
-                    cy + kotlin.math.sin(angle).toFloat() * outer,
-                    paint
-                )
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.color = Color.argb(alpha, 255, 205, 95)
+            paint.strokeWidth = 3.5f
+            for (i in -2..2) {
+                val startX = x + i * 5f
+                val startY = y - 5f
+                val spread = i * (3f + p * 3f)
+                val length = (1f - p) * (18f + (2 - kotlin.math.abs(i)) * 5f)
+                canvas.drawLine(startX, startY, startX + spread, startY + length, paint)
             }
+            // A brief compressed shockwave under the character, not a floating halo.
+            paint.strokeWidth = 2.5f
+            paint.color = Color.argb(alpha, 255, 225, 155)
+            canvas.drawOval(x - 15f - p * 9f, y - 4f, x + 15f + p * 9f, y + 2f, paint)
         }
 
         // Landing squash cue: expanding ground ring and two dust puffs.
