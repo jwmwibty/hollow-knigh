@@ -22,6 +22,7 @@ class DarkRibsRoom : Room(
 ) {
     private val ribArches = Path()
     private val stalactites = Path()
+    private val distantCliffs = Path()
 
     override fun build() {
         spawnX = 140f
@@ -115,6 +116,18 @@ class DarkRibsRoom : Room(
             stalactites.close()
         }
 
+        // Prebuild distant fossil cliffs once for smooth mobile rendering.
+        for (i in 0..18) {
+            val bx = i * 255f - 60f
+            val top = 190f + ((i * 53) % 145)
+            distantCliffs.moveTo(bx, 620f)
+            distantCliffs.lineTo(bx + 35f, top + 80f)
+            distantCliffs.lineTo(bx + 62f, top)
+            distantCliffs.lineTo(bx + 100f, top + 95f)
+            distantCliffs.lineTo(bx + 142f, 620f)
+            distantCliffs.close()
+        }
+
         // Giant Background Rib Cages
         for (i in 0..14) {
             val rx = i * 280f + 120f
@@ -135,6 +148,27 @@ class DarkRibsRoom : Room(
         paint.strokeWidth = 24f
         paint.strokeCap = Paint.Cap.ROUND
         canvas.drawPath(ribArches, paint)
+
+        // Far-off fossil cliffs and broken bone spires.
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(9, 14, 24)
+        canvas.drawPath(distantCliffs, paint)
+
+        // Hanging chains and tiny soul lamps behind the playable layer.
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        paint.color = Color.rgb(37, 49, 64)
+        for (i in 0..12) {
+            val cx = i * 365f + 80f
+            val drop = 90f + ((i * 29) % 160)
+            canvas.drawLine(cx, -80f, cx + 7f, drop, paint)
+            canvas.drawOval(cx - 5f, drop - 4f, cx + 12f, drop + 15f, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(120, 105, 205, 230)
+            canvas.drawCircle(cx + 3f, drop + 5f, 3f, paint)
+            paint.style = Paint.Style.STROKE
+            paint.color = Color.rgb(37, 49, 64)
+        }
 
         // Ancient will-o'-the-wisp blooms across the cavern
         for (i in 0..9) {

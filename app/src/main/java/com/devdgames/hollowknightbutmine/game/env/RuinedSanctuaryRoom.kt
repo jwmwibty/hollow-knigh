@@ -23,6 +23,8 @@ class RuinedSanctuaryRoom : Room(
     private val lightShafts = ArrayList<LightShaft>()
     private val grandCathedral = Path()
     private val lushVines = Path()
+    private val distantTowers = Path()
+    private val distantBanners = Path()
 
     override fun build() {
         spawnX = 140f
@@ -113,6 +115,25 @@ class RuinedSanctuaryRoom : Room(
             grandCathedral.lineTo(ax + 55f, 480f)
         }
 
+        // Prebuild distant tower roofs and hanging banners once.
+        for (i in 0..15) {
+            val tx = i * 300f + 20f
+            val towerH = 150f + ((i * 41) % 180)
+            distantTowers.moveTo(tx - 8f, 480f - towerH)
+            distantTowers.lineTo(tx + 39f, 450f - towerH)
+            distantTowers.lineTo(tx + 86f, 480f - towerH)
+            distantTowers.close()
+        }
+        for (i in 0..7) {
+            val bx = i * 560f + 160f
+            distantBanners.moveTo(bx, 105f)
+            distantBanners.lineTo(bx + 27f, 113f)
+            distantBanners.lineTo(bx + 21f, 158f)
+            distantBanners.lineTo(bx + 11f, 147f)
+            distantBanners.lineTo(bx, 160f)
+            distantBanners.close()
+        }
+
         // Hanging lush vines across ceiling
         for (i in 0..32) {
             val vx = i * 140f + 40f
@@ -133,7 +154,44 @@ class RuinedSanctuaryRoom : Room(
         paint.strokeWidth = 18f
         canvas.drawPath(grandCathedral, paint)
 
+        // Layered ruined towers behind the cathedral arches.
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(8, 24, 29)
+        for (i in 0..15) {
+            val tx = i * 300f + 20f
+            val towerH = 150f + ((i * 41) % 180)
+            canvas.drawRect(tx, 480f - towerH, tx + 78f, 520f, paint)
+            // Roof silhouettes are drawn together below.
+
+            // Narrow, faint windows in each distant tower.
+            paint.color = Color.argb(70, 83, 211, 194)
+            for (w in 0..2) {
+                val wx = tx + 13f + w * 22f
+                canvas.drawRoundRect(wx, 500f - towerH, wx + 7f, 520f - towerH, 3f, 3f, paint)
+            }
+            paint.color = Color.rgb(8, 24, 29)
+        }
+
+        paint.color = Color.rgb(8, 24, 29)
+        canvas.drawPath(distantTowers, paint)
+
+        // A few distant hanging banners add scale to the old royal hall.
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2f
+        paint.color = Color.rgb(24, 55, 56)
+        for (i in 0..7) {
+            val bx = i * 560f + 160f
+            canvas.drawLine(bx, 90f, bx, 190f, paint)
+            paint.style = Paint.Style.FILL
+            paint.style = Paint.Style.STROKE
+        }
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(24, 55, 56)
+        canvas.drawPath(distantBanners, paint)
+
         // Gothic Windows glow
+        paint.style = Paint.Style.FILL
         for (i in 0..16) {
             val wx = i * 280f + 60f
             EnvArt.bloom(canvas, paint, wx, 220f, 45f, 85f, EnvArt.glowTeal, 45)
