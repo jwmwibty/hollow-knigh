@@ -176,7 +176,14 @@ class MossyBridgeRoom : Room(
             EnvArt.bloom(canvas, paint, ox, oy, 75f, 75f, EnvArt.glowTeal, 45)
         }
 
-        canvas.restore()
+        // Extra distant rock spires
+paint.style = Paint.Style.FILL
+paint.color = EnvPalette.farSilhouette
+for (i in 0..8) {
+    val spireX = i * 500f + 250f
+    canvas.drawRoundRect(spireX, 30f, spireX + 80f, 200f, 12f, 12f, paint)
+}
+canvas.restore()
     }
 
     override fun drawWorld(canvas: Canvas, paint: Paint, t: Float) {

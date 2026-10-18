@@ -177,7 +177,14 @@ class DarkRibsRoom : Room(
             EnvArt.bloom(canvas, paint, wx, wy, 80f, 80f, EnvArt.glowTeal, 40)
         }
 
-        canvas.restore()
+        // Extra distant bone spires
+paint.style = Paint.Style.FILL
+paint.color = EnvPalette.farSilhouette
+for (i in 0..7) {
+    val spireX = i * 500f + 200f
+    canvas.drawRoundRect(spireX, 50f, spireX + 70f, 220f, 10f, 10f, paint)
+}
+canvas.restore()
     }
 
     override fun drawWorld(canvas: Canvas, paint: Paint, t: Float) {

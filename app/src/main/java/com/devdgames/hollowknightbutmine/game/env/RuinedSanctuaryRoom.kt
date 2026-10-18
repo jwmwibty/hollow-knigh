@@ -197,7 +197,14 @@ class RuinedSanctuaryRoom : Room(
             EnvArt.bloom(canvas, paint, wx, 220f, 45f, 85f, EnvArt.glowTeal, 45)
         }
 
-        canvas.restore()
+        // Extra distant gothic spires
+paint.style = Paint.Style.FILL
+paint.color = EnvPalette.farSilhouette
+for (i in 0..6) {
+    val spireX = i * 500f + 150f
+    canvas.drawRoundRect(spireX, 40f, spireX + 90f, 210f, 14f, 14f, paint)
+}
+canvas.restore()
     }
 
     override fun drawWorld(canvas: Canvas, paint: Paint, t: Float) {
