@@ -218,6 +218,35 @@ canvas.restore()
         // 2. Draw Slabs
         drawSlabs(canvas, paint, 0f, 0f, 4400f, 800f)
 
+        // 2b. Fine grass along the mossy ledges, with a slow cave breeze.
+        val grassWind = sin(t * 1.8f) * 10f
+        val grassBeds = arrayOf(
+            floatArrayOf(-90f, 410f, 480f),
+            floatArrayOf(490f, 630f, 435f),
+            floatArrayOf(710f, 870f, 385f),
+            floatArrayOf(590f, 730f, 310f),
+            floatArrayOf(830f, 1050f, 260f),
+            floatArrayOf(970f, 1330f, 450f),
+            floatArrayOf(1430f, 1570f, 420f),
+            floatArrayOf(1670f, 2390f, 360f),
+            floatArrayOf(1810f, 1970f, 470f),
+            floatArrayOf(2130f, 2290f, 470f),
+            floatArrayOf(2490f, 2630f, 300f),
+            floatArrayOf(2560f, 2940f, 450f),
+            floatArrayOf(3030f, 3170f, 400f),
+            floatArrayOf(3250f, 3410f, 340f),
+            floatArrayOf(3490f, 4290f, 460f),
+            floatArrayOf(3690f, 3830f, 370f),
+            floatArrayOf(3890f, 4110f, 280f)
+        )
+        for (bed in grassBeds) {
+            var gx = bed[0]
+            while (gx <= bed[1]) {
+                EnvArt.drawGrassPatch(canvas, paint, gx, bed[2], grassWind + sin(gx * 0.012f) * 2f)
+                gx += 30f
+            }
+        }
+
         // 3. Hanging Tendrils from ceiling
         paint.style = Paint.Style.FILL
         paint.color = EnvPalette.ceilingRoot
