@@ -96,7 +96,7 @@ class RuinedSanctuaryRoom : Room(
         // Section 3: Boss Chamber
         enemySpawns.add(EnemySpawn(x = 3520f, y = 335f, type = EnemyType.SHIELDER))
         enemySpawns.add(EnemySpawn(x = 4500f, y = 265f, type = EnemyType.FLYER))
-        enemySpawns.add(EnemySpawn(x = 4050f, y = 480f, boss = true, type = EnemyType.MOSS_CHARGER)) // BOSS
+        enemySpawns.add(EnemySpawn(x = 4050f, y = 480f, boss = true, type = EnemyType.COLONNADE_KNIGHT)) // BOSS
 
         // Grand God Rays across 4800px
         lightShafts.add(LightShaft(x = 850f, top = -200f, bottom = 540f, halfTop = 45f, halfBot = 130f, lean = 60f, color = EnvPalette.windowGlow, alpha = 50))

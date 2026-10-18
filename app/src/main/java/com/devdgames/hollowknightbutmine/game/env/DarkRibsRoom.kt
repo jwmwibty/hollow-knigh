@@ -103,6 +103,7 @@ class DarkRibsRoom : Room(
         enemySpawns.add(EnemySpawn(x = 3500f, y = 390f, type = EnemyType.FLYER))
         enemySpawns.add(EnemySpawn(x = 3730f, y = 320f, type = EnemyType.SPITTER))
         enemySpawns.add(EnemySpawn(x = 4250f, y = 440f, type = EnemyType.SHIELDER))
+        enemySpawns.add(EnemySpawn(x = 4400f, y = 460f, boss = true, type = EnemyType.OSSUARY_TITAN)) // Boss spawn
 
         // Stalactites across ceiling
         for (i in 0..26) {

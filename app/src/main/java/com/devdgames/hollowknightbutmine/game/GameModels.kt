@@ -33,11 +33,14 @@ enum class PlayerState {
 }
 
 enum class EnemyType {
-    CRAWLER,      // Small beetle / husk
-    FLYER,        // Winged mosquito / squit that swoops down from above
-    SPITTER,      // Acid / silk spitter artillery bug
-    SHIELDER,     // Heavy armored husk with a chitin shield (must parry, grab, or hit from behind)
-    MOSS_CHARGER  // Large aggressive charger mini-boss
+    CRAWLER,           // Small beetle / husk
+    FLYER,             // Winged mosquito / squit that swoops down from above
+    SPITTER,           // Acid / silk spitter artillery bug
+    SHIELDER,          // Heavy armored husk with a chitin shield
+    MOSS_CHARGER,      // Aggressive charger beast
+    BROODMOTHER,       // Chapter 1 Boss: Giant winged matriarch that bombards acid & spawns swarms
+    OSSUARY_TITAN,     // Chapter 2 Boss: Gigantic bone golem with hammer smashes & shockwaves
+    COLONNADE_KNIGHT   // Chapter 3 Boss: Ancient Royal Duelist with lance thrusts & teleports
 }
 
 data class AttackHitbox(

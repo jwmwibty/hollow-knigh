@@ -99,6 +99,7 @@ class MossyBridgeRoom : Room(
         enemySpawns.add(EnemySpawn(x = 3330f, y = 340f, type = EnemyType.SPITTER))
         enemySpawns.add(EnemySpawn(x = 3750f, y = 460f, type = EnemyType.SHIELDER))
         enemySpawns.add(EnemySpawn(x = 4100f, y = 460f, type = EnemyType.CRAWLER))
+        enemySpawns.add(EnemySpawn(x = 4200f, y = 460f, boss = true, type = EnemyType.BROODMOTHER)) // Boss spawn
 
         // ================= ATMOSPHERIC SHAFTS ACROSS 4400px =================
         lightShafts.add(LightShaft(x = 550f, top = -180f, bottom = 540f, halfTop = 40f, halfBot = 120f, lean = 70f, color = EnvPalette.windowGlow, alpha = 45))
