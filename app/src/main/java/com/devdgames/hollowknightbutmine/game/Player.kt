@@ -42,6 +42,9 @@ class Player(
     var stateTimer = 0f
     // Continuous clock for lightweight procedural character animation.
     private var animationTime = 0f
+    private var landingTimer = 0f
+    private var jumpBurstTimer = 0f
+    private var dashBurstTimer = 0f
     var dashCooldown = 0f
     var canDashInAir = true
     var invincibilityTimer = 0f
@@ -75,6 +78,8 @@ class Player(
             vy = jumpSpeed
             isGrounded = false
             state = PlayerState.JUMPING
+            jumpBurstTimer = 0.16f
+            landingTimer = 0f
         }
     }
 
@@ -84,7 +89,8 @@ class Player(
         if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
 
         state = PlayerState.DASHING
-        stateTimer = 0.22f // Dash duration
+        stateTimer = 0.28f // Slightly longer, punchier dash
+        dashBurstTimer = 0.22f
         dashCooldown = 0.65f
         invincibilityTimer = 0.24f // Dash i-frames!
         if (!isGrounded) canDashInAir = false
@@ -153,7 +159,7 @@ class Player(
     fun startParry() {
         if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
         state = PlayerState.PARRYING
-        stateTimer = 0.28f // Tight parry window
+        stateTimer = 0.72f // More forgiving parry window
         parrySuccess = false
     }
 
@@ -208,6 +214,9 @@ class Player(
         onParryTriggered: (() -> Unit)? = null
     ) {
         animationTime += dt
+        if (landingTimer > 0f) landingTimer = (landingTimer - dt).coerceAtLeast(0f)
+        if (jumpBurstTimer > 0f) jumpBurstTimer = (jumpBurstTimer - dt).coerceAtLeast(0f)
+        if (dashBurstTimer > 0f) dashBurstTimer = (dashBurstTimer - dt).coerceAtLeast(0f)
         if (invincibilityTimer > 0f) invincibilityTimer -= dt
         if (flashTimer > 0f) flashTimer -= dt
         if (dashCooldown > 0f) dashCooldown -= dt
@@ -309,7 +318,12 @@ class Player(
             if (vy > 950f) vy = 950f
         }
 
+        val wasAirborne = !isGrounded
         applyCollision(dt, platforms)
+        if (wasAirborne && isGrounded) {
+            landingTimer = 0.22f
+            jumpBurstTimer = 0f
+        }
 
         if (isGrounded) {
             canDashInAir = true
@@ -483,7 +497,13 @@ class Player(
         paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
         // Two-frame procedural stride: legs swing opposite each other while running.
         val stride = if (state == PlayerState.RUNNING) sin(animationTime * 17f) * 6f else 0f
-        val airborneTuck = if (state == PlayerState.JUMPING || state == PlayerState.FALLING || state == PlayerState.DASHING) 3f else 0f
+        val airborneTuck = when {
+            state == PlayerState.DASHING -> 6f
+            state == PlayerState.JUMPING -> 5f + sin(animationTime * 9f) * 1.5f
+            state == PlayerState.FALLING -> 2f
+            landingTimer > 0f -> -sin((landingTimer / 0.22f) * Math.PI).toFloat() * 3f
+            else -> 0f
+        }
         // Left leg
         canvas.drawRoundRect(x - 11f - stride, y - 24f + airborneTuck, x - 2f - stride, y - 8f + airborneTuck, 3f, 3f, paint)
         // Right leg
@@ -549,9 +569,15 @@ class Player(
         // Head moves forward slightly during Headbutt attack
         val headOffsetX = dir * (if (state == PlayerState.HEADBUTTING) 16f else 0f)
         val runBob = if (state == PlayerState.RUNNING) abs(sin(animationTime * 17f)) * 2.5f else 0f
-        val jumpTilt = if (state == PlayerState.JUMPING) -2f else if (state == PlayerState.FALLING) 2f else 0f
-        val headCenterX = x + headOffsetX
-        val headCenterY = y - height * 0.82f + runBob + jumpTilt
+        val jumpTilt = when {
+            state == PlayerState.JUMPING -> -3.5f
+            state == PlayerState.FALLING -> 3f
+            state == PlayerState.DASHING -> 2f
+            else -> 0f
+        }
+        val landingDip = if (landingTimer > 0f) sin((landingTimer / 0.22f) * Math.PI).toFloat() * 4f else 0f
+        val headCenterX = x + headOffsetX + if (state == PlayerState.DASHING) dir * 3f else 0f
+        val headCenterY = y - height * 0.82f + runBob + jumpTilt + landingDip
         val headRadius = 16f
 
         // Perfectly round ivory/bone skull
@@ -733,8 +759,33 @@ class Player(
             canvas.drawCircle(x + 10f, y - height * ((healCharge * 1.3f) % 1f), 3.5f, paint)
         }
 
+        // Jump take-off burst: small gold flecks kick from the feet.
+        if (jumpBurstTimer > 0f) {
+            val p = jumpBurstTimer / 0.16f
+            paint.style = Paint.Style.STROKE
+            paint.color = Color.argb((p * 190f).toInt().coerceIn(0, 190), 235, 195, 105)
+            paint.strokeWidth = 2f
+            for (i in -1..1) {
+                val spread = (1f - p) * (12f + abs(i) * 8f)
+                canvas.drawLine(x + i * 5f, y - 2f, x + i * 5f + spread, y + 3f + (1f - p) * 5f, paint)
+            }
+        }
+
+        // Landing squash cue: expanding ground ring and two dust puffs.
+        if (landingTimer > 0f) {
+            val p = 1f - landingTimer / 0.22f
+            paint.style = Paint.Style.STROKE
+            paint.color = Color.argb(((1f - p) * 150f).toInt().coerceIn(0, 150), 205, 174, 112)
+            paint.strokeWidth = 2.5f
+            canvas.drawOval(x - 8f - p * 18f, y - 3f, x + 8f + p * 18f, y + 3f, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(((1f - p) * 100f).toInt().coerceIn(0, 100), 170, 155, 130)
+            canvas.drawCircle(x - 12f - p * 10f, y - 2f - p * 4f, 2f + (1f - p) * 2f, paint)
+            canvas.drawCircle(x + 12f + p * 10f, y - 2f - p * 4f, 2f + (1f - p) * 2f, paint)
+        }
+
         // Dash speed lines
-        if (state == PlayerState.DASHING) {
+        if (state == PlayerState.DASHING || dashBurstTimer > 0f) {
             paint.color = Color.argb(160, 230, 185, 80)
             paint.strokeWidth = 2.5f
             val dir = if (facing == Facing.RIGHT) 1f else -1f
