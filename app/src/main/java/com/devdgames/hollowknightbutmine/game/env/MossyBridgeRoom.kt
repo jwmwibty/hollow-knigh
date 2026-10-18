@@ -184,13 +184,23 @@ class MossyBridgeRoom : Room(
             canvas.drawRoundRect(spireX, 30f, spireX + 80f, 200f, 12f, 12f, paint)
         }
 
-        // Distant grass at the cavern floor.
-        for (i in 0..40) {
-            val baseX = i * 100f + (t * 20f % 100f)
-            val baseY = 620f
-            val bladeHeight = 30f + ((i * 13) % 50)
-            val sway = sin(t + i) * 12f
-            EnvArt.drawGrassBlade(canvas, paint, baseX, baseY, bladeHeight, sway)
+        // Layered foreground grass: overlapping tufts, varied height, and a soft mossy base.
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(5, 25, 22)
+        canvas.drawRect(-100f, 608f, 4400f, 640f, paint)
+        for (i in 0..88) {
+            val baseX = i * 52f + (t * 5f % 52f)
+            val baseY = 620f + sin(i * 0.7f) * 5f
+            val height = 17f + ((i * 17) % 31)
+            val sway = sin(t * 1.2f + i * 0.37f) * 8f
+            EnvArt.drawGrassPatch(canvas, paint, baseX, baseY, sway)
+            // Low moss leaves fill the gaps at ground level.
+            paint.style = Paint.Style.STROKE
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeWidth = 2f
+            paint.color = if (i % 3 == 0) Color.rgb(34, 100, 66) else Color.rgb(20, 70, 52)
+            canvas.drawLine(baseX - 8f, baseY, baseX - 14f + sway * 0.25f, baseY - height * 0.28f, paint)
+            paint.style = Paint.Style.FILL
         }
         canvas.restore()
     }
