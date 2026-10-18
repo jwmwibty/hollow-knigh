@@ -60,7 +60,8 @@ class Player(
 
     // Healing mechanics
     var healCharge = 0f
-    val healChargeTime = 1.0f // 1 second focus
+    var healHeld = false
+    val healChargeTime = 1.0f // 1 second focus per mask
 
     // Physics constants
     private val moveSpeed = 260f
@@ -190,16 +191,20 @@ class Player(
      * Focus / Heal using Soul
      */
     fun startHeal() {
-        // Focus consumes one Soul chunk (33) to restore exactly one mask.
+        // Focus is a held channel: every full second spends 33 Soul for one mask.
         if (state != PlayerState.DEAD && soul >= 33 && currentMasks < maxMasks &&
             isGrounded && state != PlayerState.HOLDING_ENEMY && state != PlayerState.HEADBUTTING) {
-            state = PlayerState.HEALING
-            healCharge = 0f
-            vx = 0f
+            healHeld = true
+            if (state != PlayerState.HEALING) {
+                state = PlayerState.HEALING
+                healCharge = 0f
+                vx = 0f
+            }
         }
     }
 
     fun stopHeal() {
+        healHeld = false
         if (state == PlayerState.HEALING) {
             state = PlayerState.IDLE
             healCharge = 0f
@@ -218,6 +223,7 @@ class Player(
         }
 
         currentMasks = (currentMasks - amount).coerceAtLeast(0)
+        healHeld = false
         invincibilityTimer = 1.0f
         flashTimer = 0.3f
         state = PlayerState.HURT
@@ -332,13 +338,20 @@ class Player(
             }
             PlayerState.HEALING -> {
                 healCharge += dt
+                vx = 0f
                 if (healCharge >= healChargeTime) {
                     if (soul >= 33 && currentMasks < maxMasks) {
                         soul -= 33
                         currentMasks++
                     }
                     healCharge = 0f
-                    state = PlayerState.IDLE
+                    if (healHeld && soul >= 33 && currentMasks < maxMasks && isGrounded) {
+                        // Keep focusing while held, just like Hollow Knight.
+                        state = PlayerState.HEALING
+                    } else {
+                        state = PlayerState.IDLE
+                        healHeld = false
+                    }
                 }
             }
             PlayerState.HURT -> {
