@@ -45,6 +45,9 @@ class Player(
     private var landingTimer = 0f
     private var jumpBurstTimer = 0f
     private var dashBurstTimer = 0f
+    private var doubleJumpBurstTimer = 0f
+    private var airJumpsUsed = 0
+    private val maxAirJumps = 1
     var dashCooldown = 0f
     var canDashInAir = true
     var invincibilityTimer = 0f
@@ -73,13 +76,27 @@ class Player(
     }
 
     fun jump() {
-        if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
+        if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING ||
+            state == PlayerState.GRABBING || state == PlayerState.HOLDING_ENEMY) return
+
         if (isGrounded) {
             vy = jumpSpeed
             isGrounded = false
+            airJumpsUsed = 0
             state = PlayerState.JUMPING
             jumpBurstTimer = 0.16f
             landingTimer = 0f
+        } else if (airJumpsUsed < maxAirJumps &&
+            state != PlayerState.DASHING && state != PlayerState.HEADBUTTING) {
+            // Second press in mid-air: punchy double jump with a fresh upward impulse.
+            airJumpsUsed++
+            vy = jumpSpeed * 0.82f
+            state = PlayerState.JUMPING
+            stateTimer = 0.12f
+            doubleJumpBurstTimer = 0.24f
+            landingTimer = 0f
+        } else {
+            return
         }
     }
 
@@ -217,6 +234,7 @@ class Player(
         if (landingTimer > 0f) landingTimer = (landingTimer - dt).coerceAtLeast(0f)
         if (jumpBurstTimer > 0f) jumpBurstTimer = (jumpBurstTimer - dt).coerceAtLeast(0f)
         if (dashBurstTimer > 0f) dashBurstTimer = (dashBurstTimer - dt).coerceAtLeast(0f)
+        if (doubleJumpBurstTimer > 0f) doubleJumpBurstTimer = (doubleJumpBurstTimer - dt).coerceAtLeast(0f)
         if (invincibilityTimer > 0f) invincibilityTimer -= dt
         if (flashTimer > 0f) flashTimer -= dt
         if (dashCooldown > 0f) dashCooldown -= dt
@@ -345,6 +363,7 @@ class Player(
 
         if (isGrounded) {
             canDashInAir = true
+            airJumpsUsed = 0
         }
 
         // Touch damage from active enemy if not parrying/invincible
@@ -521,9 +540,10 @@ class Player(
         paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
         // Two-frame procedural stride: legs swing opposite each other while running.
         val stride = if (state == PlayerState.RUNNING) sin(animationTime * 17f) * 6f else 0f
+        val doubleJumpTuck = if (doubleJumpBurstTimer > 0f) sin((doubleJumpBurstTimer / 0.24f) * Math.PI).toFloat() * 5f else 0f
         val airborneTuck = when {
             state == PlayerState.DASHING -> 6f
-            state == PlayerState.JUMPING -> 5f + sin(animationTime * 9f) * 1.5f
+            state == PlayerState.JUMPING -> 5f + sin(animationTime * 9f) * 1.5f + doubleJumpTuck
             state == PlayerState.FALLING -> 2f
             landingTimer > 0f -> -sin((landingTimer / 0.22f) * Math.PI).toFloat() * 3f
             else -> 0f
@@ -795,6 +815,30 @@ class Player(
             for (i in -1..1) {
                 val spread = (1f - p) * (12f + abs(i) * 8f)
                 canvas.drawLine(x + i * 5f, y - 2f, x + i * 5f + spread, y + 3f + (1f - p) * 5f, paint)
+            }
+        }
+
+        // Double-jump burst: a bright, expanding golden ring and outward pin-like streaks.
+        if (doubleJumpBurstTimer > 0f) {
+            val p = 1f - doubleJumpBurstTimer / 0.24f
+            val alpha = ((1f - p) * 210f).toInt().coerceIn(0, 210)
+            val cy = y - height * 0.45f
+            paint.style = Paint.Style.STROKE
+            paint.color = Color.argb(alpha, 255, 215, 105)
+            paint.strokeWidth = 3f
+            canvas.drawCircle(x, cy, 8f + p * 25f, paint)
+            paint.strokeWidth = 2.5f
+            for (i in 0..7) {
+                val angle = i * (Math.PI / 4.0)
+                val inner = 10f + p * 13f
+                val outer = inner + (1f - p) * 12f
+                canvas.drawLine(
+                    x + kotlin.math.cos(angle).toFloat() * inner,
+                    cy + kotlin.math.sin(angle).toFloat() * inner,
+                    x + kotlin.math.cos(angle).toFloat() * outer,
+                    cy + kotlin.math.sin(angle).toFloat() * outer,
+                    paint
+                )
             }
         }
 
