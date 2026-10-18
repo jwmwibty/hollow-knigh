@@ -22,6 +22,7 @@ class DarkRibsRoom : Room(
 ) {
     private val ribArches = Path()
     private val stalactites = Path()
+    private val distantCliffs = Path()
 
     override fun build() {
         spawnX = 140f
@@ -114,6 +115,18 @@ class DarkRibsRoom : Room(
             stalactites.close()
         }
 
+        // Prebuild distant fossil cliffs once for smooth mobile rendering.
+        for (i in 0..18) {
+            val bx = i * 255f - 60f
+            val top = 190f + ((i * 53) % 145)
+            distantCliffs.moveTo(bx, 620f)
+            distantCliffs.lineTo(bx + 35f, top + 80f)
+            distantCliffs.lineTo(bx + 62f, top)
+            distantCliffs.lineTo(bx + 100f, top + 95f)
+            distantCliffs.lineTo(bx + 142f, 620f)
+            distantCliffs.close()
+        }
+
         // Giant Background Rib Cages
         for (i in 0..14) {
             val rx = i * 280f + 120f
@@ -138,18 +151,7 @@ class DarkRibsRoom : Room(
         // Far-off fossil cliffs and broken bone spires.
         paint.style = Paint.Style.FILL
         paint.color = Color.rgb(9, 14, 24)
-        for (i in 0..18) {
-            val bx = i * 255f - 60f
-            val top = 190f + ((i * 53) % 145)
-            val cliff = Path()
-            cliff.moveTo(bx, 620f)
-            cliff.lineTo(bx + 35f, top + 80f)
-            cliff.lineTo(bx + 62f, top)
-            cliff.lineTo(bx + 100f, top + 95f)
-            cliff.lineTo(bx + 142f, 620f)
-            cliff.close()
-            canvas.drawPath(cliff, paint)
-        }
+        canvas.drawPath(distantCliffs, paint)
 
         // Hanging chains and tiny soul lamps behind the playable layer.
         paint.style = Paint.Style.STROKE
