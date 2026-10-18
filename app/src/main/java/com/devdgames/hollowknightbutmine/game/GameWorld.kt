@@ -4,6 +4,10 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import com.devdgames.hollowknightbutmine.game.env.DarkRibsRoom
+import com.devdgames.hollowknightbutmine.game.env.MossyBridgeRoom
+import com.devdgames.hollowknightbutmine.game.env.Room
+import com.devdgames.hollowknightbutmine.game.env.RuinedSanctuaryRoom
 import kotlin.random.Random
 
 /**
@@ -29,13 +33,19 @@ data class Particle(
 }
 
 /**
- * GameWorld manages map platforms, player, enemies, camera, combat feedback, and particles.
+ * GameWorld manages map rooms, platforms, player, enemies, camera, combat feedback, and particles.
  */
 class GameWorld {
-    val player = Player(x = 180f, y = 420f)
+    val player = Player(x = 140f, y = 460f)
     val enemies = mutableListOf<Enemy>()
+    val projectiles = mutableListOf<Projectile>()
     val platforms = mutableListOf<RectF>()
     val particles = mutableListOf<Particle>()
+
+    // Room System
+    private val rooms = mutableMapOf<String, Room>()
+    var currentRoom: Room? = null
+    var gameTime = 0f
 
     // Camera viewport offset
     var cameraX = 0f
@@ -51,53 +61,77 @@ class GameWorld {
     var combatMessageColor = Color.WHITE
 
     init {
-        setupRoom()
+        registerRooms()
+        loadRoom("mossy_bridge", 140f, 460f)
     }
 
-    private fun setupRoom() {
-        // Main Ground
-        platforms.add(RectF(-200f, 480f, 1600f, 600f))
+    private fun registerRooms() {
+        val r1 = MossyBridgeRoom()
+        r1.build()
+        rooms[r1.id] = r1
 
-        // Left & Right boundaries
-        platforms.add(RectF(-200f, -400f, -100f, 600f))
-        platforms.add(RectF(1500f, -400f, 1600f, 600f))
+        val r2 = DarkRibsRoom()
+        r2.build()
+        rooms[r2.id] = r2
 
-        // Stepping platforms for jumping / pogoing / high ground
-        platforms.add(RectF(250f, 370f, 420f, 395f))
-        platforms.add(RectF(500f, 290f, 670f, 315f))
-        platforms.add(RectF(750f, 220f, 950f, 245f))
-        platforms.add(RectF(320f, 180f, 480f, 205f))
+        val r3 = RuinedSanctuaryRoom()
+        r3.build()
+        rooms[r3.id] = r3
+    }
 
-        // Elevated platform with crawling bug
-        platforms.add(RectF(1020f, 380f, 1260f, 405f))
+    fun loadRoom(roomId: String, targetX: Float, targetY: Float) {
+        val room = rooms[roomId] ?: return
+        currentRoom = room
 
-        // Spawn test enemies
-        spawnEnemies()
+        // Clear room entities
+        enemies.clear()
+        projectiles.clear()
+        platforms.clear()
+
+        // Sync platform collision
+        platforms.addAll(room.platforms)
+
+        // Position player
+        player.x = targetX
+        player.y = targetY
+        player.vx = 0f
+        player.vy = 0f
+
+        // Spawn room enemies
+        for (spawn in room.enemySpawns) {
+            val enemyType = when {
+                spawn.boss -> EnemyType.MOSS_CHARGER
+                spawn.y < 250f -> EnemyType.FLYER
+                spawn.x in 1100f..1400f && roomId == "mossy_bridge" -> EnemyType.SPITTER
+                spawn.x in 1300f..1400f && roomId == "dark_ribs" -> EnemyType.SPITTER
+                spawn.x in 550f..650f && roomId == "ruined_sanctuary" -> EnemyType.SPITTER
+                spawn.x in 1600f..1700f && roomId == "mossy_bridge" -> EnemyType.SHIELDER
+                spawn.x in 1000f..1100f && roomId == "dark_ribs" -> EnemyType.SHIELDER
+                spawn.x in 1300f..1400f && roomId == "ruined_sanctuary" -> EnemyType.SHIELDER
+                else -> EnemyType.CRAWLER
+            }
+
+            val enemy = Enemy(x = spawn.x, y = spawn.y, type = enemyType, isBoss = spawn.boss)
+            if (enemyType == EnemyType.SPITTER) {
+                enemy.onShootProjectile = { px, py, pvx, pvy ->
+                    projectiles.add(Projectile(x = px, y = py, vx = pvx, vy = pvy))
+                    spawnSparks(px, py, 6, Color.rgb(255, 180, 40))
+                }
+            }
+            enemies.add(enemy)
+        }
+
+        // Display room title announcement
+        showCombatText(room.title, Color.rgb(220, 245, 240))
     }
 
     fun reset() {
-        enemies.clear()
-        particles.clear()
-        player.x = 180f
-        player.y = 420f
-        player.vx = 0f
-        player.vy = 0f
+        val room = currentRoom ?: return
+        loadRoom(room.id, room.spawnX, room.spawnY)
         player.currentMasks = player.maxMasks
         player.soul = 33
         player.state = PlayerState.IDLE
         player.grabbedEnemy = null
-        spawnEnemies()
-    }
-
-    private fun spawnEnemies() {
-        // 1. Ground crawler beetle (good for testing stab, grab, headbutt, and parry)
-        enemies.add(Enemy(x = 520f, y = 480f, width = 44f, height = 38f))
-
-        // 2. High platform beetle
-        enemies.add(Enemy(x = 1140f, y = 380f, width = 44f, height = 38f))
-
-        // 3. Mini-boss husk on far right (high HP to test headbutt damage reduction)
-        enemies.add(Enemy(x = 1350f, y = 480f, width = 56f, height = 62f, isBoss = true))
     }
 
     fun triggerShake(intensity: Float, duration: Float) {
@@ -160,6 +194,52 @@ class GameWorld {
             enemy.update(dt, player.x, player.y, platforms)
         }
 
+        // Update projectiles & check player / parry collisions
+        val projIter = projectiles.iterator()
+        while (projIter.hasNext()) {
+            val proj = projIter.next()
+            proj.update(dt, platforms)
+
+            if (!proj.isAlive) {
+                projIter.remove()
+                continue
+            }
+
+            val projBox = proj.getBoundingBox()
+
+            if (!proj.isReflected) {
+                // Check collision with player
+                if (RectF.intersects(player.getBoundingBox(), projBox)) {
+                    if (player.state == PlayerState.PARRYING) {
+                        // Deflect projectile back with safety pin!
+                        val reflectDir = if (player.facing == Facing.RIGHT) 1f else -1f
+                        proj.reflect(reflectDir * 420f, 0f)
+                        triggerShake(8f, 0.2f)
+                        showCombatText("🛡️ DEFLECTED!", Color.rgb(100, 240, 255))
+                        spawnSparks(proj.x, proj.y, 14, Color.CYAN)
+                        player.parrySuccess = true
+                        player.soul = (player.soul + 15).coerceAtMost(player.maxSoul)
+                    } else if (player.invincibilityTimer <= 0f) {
+                        player.takeDamage(1)
+                        proj.isAlive = false
+                        projIter.remove()
+                        spawnSparks(player.x, player.y - player.height / 2, 8, Color.YELLOW)
+                    }
+                }
+            } else {
+                // Reflected projectile can damage enemies!
+                for (enemy in enemies) {
+                    if (enemy.isAlive && RectF.intersects(enemy.getBoundingBox(), projBox)) {
+                        enemy.takeDamage(35, if (proj.vx > 0) 180f else -180f, -60f)
+                        proj.isAlive = false
+                        projIter.remove()
+                        spawnSparks(enemy.x, enemy.y - enemy.height / 2, 12, Color.CYAN)
+                        break
+                    }
+                }
+            }
+        }
+
         // Update particles
         val pIter = particles.iterator()
         while (pIter.hasNext()) {
@@ -167,6 +247,34 @@ class GameWorld {
             p.update(dt)
             if (p.isDead()) {
                 pIter.remove()
+            }
+        }
+
+        // Check room exits
+        val room = currentRoom
+        if (room != null) {
+            val playerBox = player.getBoundingBox()
+
+            // Check doors / transitions to other rooms
+            for (exit in room.exits) {
+                if (RectF.intersects(playerBox, exit.rect)) {
+                    loadRoom(exit.targetRoomId, exit.targetX, exit.targetY)
+                    return
+                }
+            }
+
+            // Check water / spike hazards
+            for (haz in room.hazards) {
+                if (RectF.intersects(playerBox, haz)) {
+                    player.takeDamage(1)
+                    player.x = room.spawnX
+                    player.y = room.spawnY
+                    player.vx = 0f
+                    player.vy = 0f
+                    triggerShake(10f, 0.3f)
+                    spawnSparks(player.x, player.y, 16, Color.rgb(240, 80, 80))
+                    break
+                }
             }
         }
 
@@ -180,6 +288,8 @@ class GameWorld {
             combatMessageTimer -= dt
         }
 
+        gameTime += dt
+
         // Smooth Camera Follow Player
         val targetCamX = player.x - screenWidth / 2f
         val targetCamY = player.y - screenHeight * 0.62f
@@ -188,6 +298,11 @@ class GameWorld {
     }
 
     fun draw(canvas: Canvas, paint: Paint, screenWidth: Float, screenHeight: Float) {
+        val room = currentRoom
+
+        // 1. Draw Room Backdrop (screen-space parallax)
+        room?.drawBackdrop(canvas, paint, cameraX, cameraY, screenWidth, screenHeight, gameTime)
+
         canvas.save()
 
         // Apply screen shake
@@ -200,36 +315,17 @@ class GameWorld {
 
         canvas.translate(-cameraX + shakeOffsetX, -cameraY + shakeOffsetY)
 
-        // 1. Draw Hallownest background ambiance (deep caverns / forgotten crossroads vibe)
-        paint.style = Paint.Style.FILL
-        paint.color = Color.rgb(12, 14, 22)
-        canvas.drawRect(cameraX - 100f, cameraY - 100f, cameraX + screenWidth + 100f, cameraY + screenHeight + 100f, paint)
-
-        // Distant background arches / pillars
-        paint.color = Color.rgb(20, 24, 36)
-        for (i in 0..6) {
-            val px = i * 280f - 100f
-            canvas.drawRect(px, 100f, px + 80f, 500f, paint)
-        }
-
-        // 2. Draw Platforms (Dark slate ruins)
-        paint.color = Color.rgb(28, 34, 48)
-        paint.style = Paint.Style.FILL
-        for (plat in platforms) {
-            canvas.drawRoundRect(plat, 8f, 8f, paint)
-        }
-
-        // Platform glowing moss / highlights on top surface
-        paint.color = Color.rgb(55, 75, 95)
-        paint.strokeWidth = 3f
-        paint.style = Paint.Style.STROKE
-        for (plat in platforms) {
-            canvas.drawLine(plat.left + 4f, plat.top + 1.5f, plat.right - 4f, plat.top + 1.5f, paint)
-        }
+        // 2. Draw Room World Geometry (slabs, ruins, shrines, water)
+        room?.drawWorld(canvas, paint, gameTime)
 
         // 3. Draw Enemies
         for (enemy in enemies) {
             enemy.draw(canvas, paint)
+        }
+
+        // 3.5 Draw Projectiles
+        for (proj in projectiles) {
+            proj.draw(canvas, paint)
         }
 
         // 4. Draw Player
@@ -244,7 +340,10 @@ class GameWorld {
 
         canvas.restore()
 
-        // 6. Draw HUD (Masks + Soul Vessel + Combat Banners) on UI layer
+        // 6. Draw Room Front Layer (volumetric God rays, light shafts, drifting spores, vignette)
+        room?.drawFront(canvas, paint, cameraX, cameraY, screenWidth, screenHeight, gameTime)
+
+        // 7. Draw HUD (Masks + Soul Vessel + Combat Banners) on top
         drawHUD(canvas, paint, screenWidth, screenHeight)
     }
 

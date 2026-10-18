@@ -34,7 +34,10 @@ enum class PlayerState {
 
 enum class EnemyType {
     CRAWLER,      // Small beetle / husk
-    FLYER
+    FLYER,        // Winged mosquito / squit that swoops down from above
+    SPITTER,      // Acid / silk spitter artillery bug
+    SHIELDER,     // Heavy armored husk with a chitin shield (must parry, grab, or hit from behind)
+    MOSS_CHARGER  // Large aggressive charger mini-boss
 }
 
 data class AttackHitbox(
