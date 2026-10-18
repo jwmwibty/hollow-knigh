@@ -122,9 +122,9 @@ class RuinedSanctuaryRoom : Room(
     }
 
     override fun drawBackdrop(canvas: Canvas, paint: Paint, camX: Float, camY: Float, viewW: Float, viewH: Float, t: Float) {
-        fillVoid(canvas, paint, viewW, viewH, Color.rgb(6, 12, 18), Color.rgb(10, 24, 28))
+        // Shared backdrop gradient is painted once by the first biome.
 
-        val paraX = camX * 0.22f
+        val paraX = camX * 0.25f
         canvas.save()
         canvas.translate(-paraX, 0f)
 
