@@ -53,6 +53,7 @@ class GameWorld {
     private var worldLeft = -100f
     private var worldRight = 13800f
     var gameTime = 0f
+    private var deathTimer = 0f
 
     // Camera viewport offset
     var cameraX = 0f
@@ -105,6 +106,10 @@ class GameWorld {
         worldLeft = roomPlacements.first().room.bounds.left
         val lastPlacement = roomPlacements.last()
         worldRight = lastPlacement.offsetX + lastPlacement.room.bounds.right
+        // Always start a fresh run with a full set of masks and enough Soul for one Focus.
+        player.currentMasks = player.maxMasks
+        player.soul = 33
+        deathTimer = 0f
 
         for (placement in roomPlacements) {
             val room = placement.room
@@ -196,9 +201,10 @@ class GameWorld {
         screenShakeTime = duration
     }
 
+    // Combat feedback is intentionally visual-only; no action callouts clutter the screen.
     fun showCombatText(text: String, color: Int) {
-        combatMessage = text
-        combatMessageTimer = 1.0f
+        combatMessage = ""
+        combatMessageTimer = 0f
         combatMessageColor = color
     }
 
@@ -223,6 +229,26 @@ class GameWorld {
     }
 
     fun update(dt: Float, inputX: Float, screenWidth: Float, screenHeight: Float) {
+        // Death pause and respawn: losing the last mask now has a real consequence.
+        if (player.state == PlayerState.DEAD) {
+            deathTimer -= dt
+            if (deathTimer <= 0f) {
+                val deathZone = placementForX(player.x)
+                player.x = deathZone.offsetX + deathZone.room.spawnX
+                player.y = deathZone.room.spawnY
+                player.vx = 0f
+                player.vy = 0f
+                player.currentMasks = player.maxMasks
+                player.soul = 0 // Soul is lost on death; rebuild it through combat.
+                player.state = PlayerState.IDLE
+                player.isGrounded = false
+                player.invincibilityTimer = 1.35f
+                player.flashTimer = 0f
+                player.activeHitbox = null
+                player.grabbedEnemy = null
+            }
+        }
+
         // Update player
         val prevHeadbutt = player.state == PlayerState.HEADBUTTING
         val prevParry = player.parrySuccess
@@ -238,6 +264,18 @@ class GameWorld {
                 spawnSparks(player.x + 20f, player.y - player.height / 2, 16, Color.YELLOW)
             }
         )
+
+        // Enter a short death pause when the last mask breaks.
+        if (player.currentMasks <= 0 && player.state != PlayerState.DEAD) {
+            player.state = PlayerState.DEAD
+            player.vx = 0f
+            player.vy = 0f
+            player.activeHitbox = null
+            player.grabbedEnemy?.isGrabbed = false
+            player.grabbedEnemy = null
+            deathTimer = 1.15f
+            triggerShake(12f, 0.35f)
+        }
 
         // Detect headbutt execution trigger
         if (!prevHeadbutt && player.state == PlayerState.HEADBUTTING) {
@@ -324,7 +362,7 @@ class GameWorld {
                 break
             }
         }
-        if (hitHazard || player.y > 900f) {
+        if ((hitHazard || player.y > 900f) && player.state != PlayerState.DEAD) {
             player.grabbedEnemy?.isGrabbed = false
             player.grabbedEnemy = null
             player.x = zone.offsetX + zone.room.spawnX
@@ -408,76 +446,80 @@ class GameWorld {
     }
 
     private fun drawHUD(canvas: Canvas, paint: Paint, screenWidth: Float, screenHeight: Float) {
-        val startX = 50f
-        val startY = 70f
-
-        // Soul Vessel Circle
+        // Compact, text-free HUD: Soul meter + five readable masks.
+        val panel = RectF(18f, 16f, 278f, 84f)
         paint.style = Paint.Style.FILL
-        paint.color = Color.rgb(20, 24, 35)
-        canvas.drawCircle(startX, startY + 10f, 32f, paint)
+        paint.color = Color.argb(190, 8, 13, 23)
+        canvas.drawRoundRect(panel, 18f, 18f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.5f
+        paint.color = Color.argb(155, 125, 165, 183)
+        canvas.drawRoundRect(panel, 18f, 18f, paint)
 
-        // Soul Liquid fill inside vessel
+        val soulX = 52f
+        val soulY = 50f
         val soulPct = (player.soul.toFloat() / player.maxSoul).coerceIn(0f, 1f)
-        if (soulPct > 0f) {
-            paint.color = Color.rgb(230, 245, 255)
-            canvas.drawCircle(startX, startY + 10f, 26f * soulPct, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(16, 26, 39)
+        canvas.drawCircle(soulX, soulY, 23f, paint)
+        paint.color = Color.rgb(29, 47, 62)
+        canvas.drawCircle(soulX, soulY, 17f, paint)
+
+        // Soul is shown as a clean arc instead of a giant white bubble.
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 5f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.color = Color.rgb(118, 211, 235)
+        canvas.drawArc(RectF(soulX - 19f, soulY - 19f, soulX + 19f, soulY + 19f),
+            -90f, 360f * soulPct, false, paint)
+        paint.strokeWidth = 2f
+        paint.color = Color.rgb(185, 225, 239)
+        canvas.drawCircle(soulX, soulY, 23f, paint)
+
+        // Focus charge gets its own warm progress ring while the player holds Heal.
+        if (player.state == PlayerState.HEALING) {
+            paint.strokeWidth = 3f
+            paint.color = Color.rgb(255, 211, 112)
+            canvas.drawArc(RectF(soulX - 27f, soulY - 27f, soulX + 27f, soulY + 27f),
+                -90f, 360f * (player.healCharge / player.healChargeTime).coerceIn(0f, 1f),
+                false, paint)
         }
 
-        // Vessel border
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 4f
-        paint.color = Color.rgb(180, 200, 220)
-        canvas.drawCircle(startX, startY + 10f, 32f, paint)
-
-        // Masks (HP)
-        val maskSpacing = 36f
-        val maskStartX = startX + 50f
-        paint.style = Paint.Style.FILL
+        // Hollow-Knight-inspired mask pips: full masks are bright; broken masks are dim.
+        val maskStartX = 101f
+        val maskSpacing = 32f
         for (i in 0 until player.maxMasks) {
             val mx = maskStartX + i * maskSpacing
-            val my = startY + 10f
-
+            val my = soulY
             if (i < player.currentMasks) {
-                // Healthy Mask (white knight head shape)
-                paint.color = Color.rgb(240, 245, 255)
-                canvas.drawOval(mx - 12f, my - 14f, mx + 12f, my + 14f, paint)
-
-                // Mask eye holes
-                paint.color = Color.rgb(20, 20, 28)
-                canvas.drawCircle(mx - 4f, my, 3f, paint)
-                canvas.drawCircle(mx + 4f, my, 3f, paint)
-            } else {
-                // Broken Mask
-                paint.color = Color.rgb(55, 60, 72)
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 2.5f
-                canvas.drawOval(mx - 12f, my - 14f, mx + 12f, my + 14f, paint)
                 paint.style = Paint.Style.FILL
+                paint.color = Color.rgb(238, 242, 244)
+                canvas.drawOval(mx - 10f, my - 13f, mx + 10f, my + 13f, paint)
+                val horn = android.graphics.Path().apply {
+                    moveTo(mx - 8f, my - 7f)
+                    lineTo(mx - 13f, my - 15f)
+                    lineTo(mx - 2f, my - 10f)
+                    close()
+                    moveTo(mx + 8f, my - 7f)
+                    lineTo(mx + 13f, my - 15f)
+                    lineTo(mx + 2f, my - 10f)
+                    close()
+                }
+                canvas.drawPath(horn, paint)
+                paint.color = Color.rgb(15, 22, 31)
+                canvas.drawOval(mx - 5f, my - 1f, mx - 2f, my + 5f, paint)
+                canvas.drawOval(mx + 2f, my - 1f, mx + 5f, my + 5f, paint)
+            } else {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 2f
+                paint.color = Color.rgb(73, 91, 108)
+                canvas.drawOval(mx - 10f, my - 13f, mx + 10f, my + 13f, paint)
+                canvas.drawLine(mx - 5f, my + 2f, mx + 2f, my - 5f, paint)
             }
         }
-
-        // Safety Pin Weapon Status Indicator
+        paint.alpha = 255
         paint.style = Paint.Style.FILL
-        paint.color = Color.rgb(200, 215, 235)
-        paint.textSize = 28f
-        paint.isFakeBoldText = true
-        val weaponName = when (player.state) {
-            PlayerState.HOLDING_ENEMY -> "🧷 PULLING ENEMY IN..."
-            PlayerState.PARRYING -> "🛡️ PARRYING!"
-            PlayerState.HEALING -> "✨ FOCUSING SOUL..."
-            else -> "🧷 Safety Pin Equipped"
-        }
-        canvas.drawText(weaponName, startX, startY + 70f, paint)
-
-        // Combat Text Popup (e.g. "PARRIED!", "HEADBUTT SMASH!")
-        if (combatMessageTimer > 0f) {
-            paint.color = combatMessageColor
-            paint.textSize = 42f
-            val alpha = (combatMessageTimer.coerceAtMost(1f) * 255).toInt()
-            paint.alpha = alpha
-            val textWidth = paint.measureText(combatMessage)
-            canvas.drawText(combatMessage, (screenWidth - textWidth) / 2f, 160f, paint)
-            paint.alpha = 255
-        }
+        paint.strokeCap = Paint.Cap.BUTT
     }
+
 }
