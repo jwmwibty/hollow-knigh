@@ -24,7 +24,7 @@ class Player(
     var y: Float
 ) {
     val width = 44f
-    val height = 64f
+    val height = 67.2f // 5% taller silhouette
 
     var vx = 0f
     var vy = 0f
@@ -504,25 +504,28 @@ class Player(
             landingTimer > 0f -> -sin((landingTimer / 0.22f) * Math.PI).toFloat() * 3f
             else -> 0f
         }
-        // Left leg
-        canvas.drawRoundRect(x - 11f - stride, y - 24f + airborneTuck, x - 2f - stride, y - 8f + airborneTuck, 3f, 3f, paint)
-        // Right leg
-        canvas.drawRoundRect(x + 2f + stride, y - 24f - airborneTuck, x + 11f + stride, y - 8f - airborneTuck, 3f, 3f, paint)
+        // Legs pivot at the hips. Each boot follows its own leg so the feet never
+        // float separately while the running stride swings.
+        val leftLegX = x - 7f - stride
+        val rightLegX = x + 7f + stride
+        val leftFootY = y - 9f + airborneTuck
+        val rightFootY = y - 9f - airborneTuck
+        canvas.drawRoundRect(leftLegX - 4f, y - 27f + airborneTuck, leftLegX + 4f, leftFootY, 3.5f, 3.5f, paint)
+        canvas.drawRoundRect(rightLegX - 4f, y - 27f - airborneTuck, rightLegX + 4f, rightFootY, 3.5f, 3.5f, paint)
 
-        // Strapped leather boots
+        // Chunky boots stay attached to the legs and sit directly on the floor.
         paint.color = if (isFlashing) Color.WHITE else Color.rgb(22, 18, 22)
-        // Boot feet pointing forward
         val footDir = dir * 3f
-        canvas.drawRoundRect(x - 12f + footDir, y - 10f, x - 1f + footDir, y, 4f, 4f, paint)
-        canvas.drawRoundRect(x + 1f + footDir, y - 10f, x + 12f + footDir, y, 4f, 4f, paint)
+        canvas.drawRoundRect(leftLegX - 6f + footDir, leftFootY - 2f, leftLegX + 5f + footDir, y + 1f, 4f, 4f, paint)
+        canvas.drawRoundRect(rightLegX - 5f + footDir, rightFootY - 2f, rightLegX + 6f + footDir, y + 1f, 4f, 4f, paint)
 
         // Boot leather strap cross-ties
         if (!isFlashing) {
             paint.color = Color.rgb(65, 55, 50)
             paint.strokeWidth = 1.8f
             paint.style = Paint.Style.STROKE
-            canvas.drawLine(x - 10f, y - 16f, x - 3f, y - 12f, paint)
-            canvas.drawLine(x + 3f, y - 16f, x + 10f, y - 12f, paint)
+            canvas.drawLine(leftLegX - 3f, leftFootY - 8f, leftLegX + 3f, leftFootY - 4f, paint)
+            canvas.drawLine(rightLegX - 3f, rightFootY - 8f, rightLegX + 3f, rightFootY - 4f, paint)
         }
     }
 
