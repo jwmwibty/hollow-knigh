@@ -135,6 +135,38 @@ class DarkRibsRoom : Room(
         paint.strokeCap = Paint.Cap.ROUND
         canvas.drawPath(ribArches, paint)
 
+        // Far-off fossil cliffs and broken bone spires.
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(9, 14, 24)
+        for (i in 0..18) {
+            val bx = i * 255f - 60f
+            val top = 190f + ((i * 53) % 145)
+            val cliff = Path()
+            cliff.moveTo(bx, 620f)
+            cliff.lineTo(bx + 35f, top + 80f)
+            cliff.lineTo(bx + 62f, top)
+            cliff.lineTo(bx + 100f, top + 95f)
+            cliff.lineTo(bx + 142f, 620f)
+            cliff.close()
+            canvas.drawPath(cliff, paint)
+        }
+
+        // Hanging chains and tiny soul lamps behind the playable layer.
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        paint.color = Color.rgb(37, 49, 64)
+        for (i in 0..12) {
+            val cx = i * 365f + 80f
+            val drop = 90f + ((i * 29) % 160)
+            canvas.drawLine(cx, -80f, cx + 7f, drop, paint)
+            canvas.drawOval(cx - 5f, drop - 4f, cx + 12f, drop + 15f, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(120, 105, 205, 230)
+            canvas.drawCircle(cx + 3f, drop + 5f, 3f, paint)
+            paint.style = Paint.Style.STROKE
+            paint.color = Color.rgb(37, 49, 64)
+        }
+
         // Ancient will-o'-the-wisp blooms across the cavern
         for (i in 0..9) {
             val wx = i * 440f + 160f
