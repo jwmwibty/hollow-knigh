@@ -182,6 +182,14 @@ paint.color = EnvPalette.farSilhouette
 for (i in 0..8) {
     val spireX = i * 500f + 250f
     canvas.drawRoundRect(spireX, 30f, spireX + 80f, 200f, 12f, 12f, paint)
+    // Grass blades on the floor
+    for (i in 0..40) {
+        val baseX = i * 100f + (t * 20f % 100f)
+        val baseY = 620f
+        val height = 30f + ((i * 13) % 50)
+        val sway = sin(t + i) * 12f
+        EnvArt.drawGrassBlade(canvas, paint, baseX, baseY, height, sway)
+    }
 }
 canvas.restore()
     }

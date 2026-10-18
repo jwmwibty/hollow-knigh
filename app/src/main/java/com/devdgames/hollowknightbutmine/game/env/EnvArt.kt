@@ -8,8 +8,6 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import kotlin.math.sqrt
-import kotlin.math.cos
-import kotlin.math.sin
 
 /** A pre-built path plus a generous bounding box used for culling. */
 internal class EnvShape(val path: Path, val bounds: RectF)
@@ -140,24 +138,5 @@ internal object EnvArt {
         }
         for (i in n downTo 0) path.lineTo(rx[i], ry[i])
         path.close()
-    }
-
-    /** Draws three slender, wind-swayed blades on a terrain edge. */
-    fun drawGrassPatch(canvas: Canvas, paint: Paint, x: Float, y: Float, wind: Float) {
-        val bladeWidth = 2f
-        val bladeHeight = 18f
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = bladeWidth
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.color = Color.rgb(31, 71, 30)
-        repeat(3) { i ->
-            val offset = i * 4f - 4f
-            val angle = (wind + i * 0.5f) * 0.15f
-            val tipX = x + offset + cos(angle) * 6f
-            val tipY = y - bladeHeight + sin(angle) * 4f
-            canvas.drawLine(x + offset, y, tipX, tipY, paint)
-        }
-        paint.style = Paint.Style.FILL
-        paint.strokeCap = Paint.Cap.BUTT
     }
 }
