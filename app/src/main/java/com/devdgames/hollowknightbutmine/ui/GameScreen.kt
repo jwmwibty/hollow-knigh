@@ -1,6 +1,10 @@
 package com.devdgames.hollowknightbutmine.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -186,7 +190,7 @@ fun CombatActionButtons(
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             // Heal / Focus (Hold to heal)
             ControlButton(
-                label = "✨",
+                label = "heal",
                 subLabel = "HEAL",
                 size = 56.dp,
                 accentColor = Color(0xFF64B5F6),
@@ -196,7 +200,7 @@ fun CombatActionButtons(
 
             // Parry (Shield with pin clasp)
             ActionButton(
-                label = "🛡️",
+                label = "parry",
                 subLabel = "PARRY",
                 size = 56.dp,
                 accentColor = Color(0xFFFFD54F),
@@ -205,7 +209,7 @@ fun CombatActionButtons(
 
             // Dash
             ActionButton(
-                label = "💨",
+                label = "dash",
                 subLabel = "DASH",
                 size = 56.dp,
                 accentColor = Color(0xFF80DEEA),
@@ -217,7 +221,7 @@ fun CombatActionButtons(
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             // Jump
             ActionButton(
-                label = "🦘",
+                label = "jump",
                 subLabel = "JUMP",
                 size = 64.dp,
                 accentColor = Color(0xFFAED581),
@@ -226,7 +230,7 @@ fun CombatActionButtons(
 
             // Stab (Safety Pin Thrust)
             ActionButton(
-                label = "🧷",
+                label = "stab",
                 subLabel = "STAB",
                 size = 68.dp,
                 accentColor = Color(0xFFE0E0E0),
@@ -235,7 +239,7 @@ fun CombatActionButtons(
 
             // Grab pulls enemies in, then the player headbutts automatically.
             ActionButton(
-                label = "🪝",
+                label = "grab",
                 subLabel = "GRAB",
                 size = 68.dp,
                 accentColor = Color(0xFFFFAB91),
@@ -283,7 +287,11 @@ fun ActionButton(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(label, fontSize = (size.value * 0.38f).sp)
+            ControlGlyph(
+                name = label,
+                tint = if (isPressed) accentColor else Color(0xFFEAF1F7),
+                modifier = Modifier.size(size * 0.43f)
+            )
             Text(
                 subLabel,
                 fontSize = 9.sp,
@@ -336,13 +344,81 @@ fun ControlButton(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(label, fontSize = (size.value * 0.38f).sp, color = Color.White)
+            ControlGlyph(
+                name = label,
+                tint = if (effectivePressed) accentColor else Color(0xFFEAF1F7),
+                modifier = Modifier.size(size * 0.43f)
+            )
             Text(
                 subLabel,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (effectivePressed) accentColor else Color(0xFFAAAAAA)
             )
+        }
+    }
+}
+
+@Composable
+private fun ControlGlyph(name: String, tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val s = Stroke(width = size.minDimension * 0.105f, cap = StrokeCap.Round)
+        fun line(x1: Float, y1: Float, x2: Float, y2: Float, width: Float = s.width) {
+            drawLine(tint, androidx.compose.ui.geometry.Offset(x1, y1), androidx.compose.ui.geometry.Offset(x2, y2), width, cap = StrokeCap.Round)
+        }
+        fun path(points: List<Pair<Float, Float>>, close: Boolean = false, fill: Boolean = false) {
+            val p = Path()
+            points.forEachIndexed { i, point ->
+                val px = point.first * w
+                val py = point.second * h
+                if (i == 0) p.moveTo(px, py) else p.lineTo(px, py)
+            }
+            if (close) p.close()
+            drawPath(p, tint, style = if (fill) androidx.compose.ui.graphics.drawscope.Fill else s)
+        }
+        when (name) {
+            "heal" -> {
+                // Medical cross and two small glints.
+                drawRoundRect(tint, topLeft = androidx.compose.ui.geometry.Offset(w * .39f, h * .18f), size = androidx.compose.ui.geometry.Size(w * .22f, h * .64f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .05f))
+                drawRoundRect(tint, topLeft = androidx.compose.ui.geometry.Offset(w * .18f, h * .39f), size = androidx.compose.ui.geometry.Size(w * .64f, h * .22f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .05f))
+                line(w * .82f, h * .12f, w * .82f, h * .28f, w * .07f)
+                line(w * .74f, h * .20f, w * .90f, h * .20f, w * .07f)
+            }
+            "parry" -> {
+                path(listOf(.5f to .08f, .84f to .22f, .78f to .61f, .5f to .88f, .22f to .61f, .16f to .22f), close = true)
+                line(w * .5f, h * .25f, w * .5f, h * .68f, w * .08f)
+                line(w * .36f, h * .47f, w * .5f, h * .60f, w * .08f)
+                line(w * .5f, h * .60f, w * .65f, h * .40f, w * .08f)
+            }
+            "dash" -> {
+                line(w * .08f, h * .30f, w * .56f, h * .30f, w * .09f)
+                line(w * .02f, h * .50f, w * .52f, h * .50f, w * .09f)
+                line(w * .12f, h * .70f, w * .56f, h * .70f, w * .09f)
+                path(listOf(.50f to .16f, .88f to .50f, .50f to .84f), close = false)
+                line(w * .48f, h * .50f, w * .88f, h * .50f, w * .09f)
+            }
+            "jump" -> {
+                path(listOf(.20f to .55f, .50f to .20f, .80f to .55f))
+                line(w * .50f, h * .22f, w * .50f, h * .78f, w * .11f)
+                line(w * .22f, h * .82f, w * .78f, h * .82f, w * .08f)
+            }
+            "stab" -> {
+                // Needle body and clasp ring, a recognizable safety-pin silhouette.
+                path(listOf(.20f to .78f, .76f to .20f, .86f to .29f, .36f to .84f))
+                drawCircle(tint, radius = w * .105f, center = androidx.compose.ui.geometry.Offset(w * .20f, h * .78f), style = s)
+                path(listOf(.67f to .18f, .79f to .08f, .91f to .17f, .83f to .30f))
+                line(w * .70f, h * .33f, w * .83f, h * .45f, w * .07f)
+            }
+            "grab" -> {
+                // Hook reaching forward and curling back.
+                path(listOf(.18f to .18f, .18f to .77f, .48f to .77f, .48f to .62f, .37f to .62f, .37f to .43f, .66f to .43f, .66f to .58f, .83f to .58f, .83f to .34f))
+                line(w * .58f, h * .24f, w * .83f, h * .34f, w * .10f)
+            }
+            "left" -> path(listOf(.68f to .15f, .28f to .50f, .68f to .85f), close = false)
+            "right" -> path(listOf(.32f to .15f, .72f to .50f, .32f to .85f), close = false)
+            else -> drawCircle(tint, radius = w * .25f)
         }
     }
 }
