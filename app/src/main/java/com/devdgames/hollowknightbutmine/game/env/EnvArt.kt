@@ -140,8 +140,8 @@ internal object EnvArt {
         path.close()
     }
     /**
-     * Draws a small cluster of wind-swayed grass blades rooted at (x, y).
-     * Safe to call each frame: uses Canvas primitives without allocating paths.
+     * Draws one curved blade with a soft, leafy silhouette and subtle highlight.
+     * Short segmented strokes create a bend instead of a straight spike.
      */
     fun drawGrassBlade(
         canvas: Canvas,
@@ -155,32 +155,44 @@ internal object EnvArt {
         val oldStyle = paint.style
         val oldStrokeWidth = paint.strokeWidth
         val oldAlpha = paint.alpha
+        val oldCap = paint.strokeCap
         paint.shader = null
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = 2.2f
-        paint.alpha = 220
-        paint.color = Color.rgb(35, 112, 79)
-        canvas.drawLine(x, baseY, x - 3f + sway * 0.45f, baseY - height * 0.65f, paint)
-        paint.color = Color.rgb(63, 153, 96)
-        canvas.drawLine(x, baseY, x + sway, baseY - height, paint)
-        paint.color = Color.rgb(24, 83, 65)
-        canvas.drawLine(x + 1f, baseY, x + 5f + sway * 0.7f, baseY - height * 0.78f, paint)
+        paint.strokeWidth = (height * 0.085f).coerceIn(1.4f, 3.2f)
+        paint.alpha = 205
+        paint.color = Color.rgb(27, 88, 61)
+        canvas.drawLine(x, baseY, x + sway * 0.25f - 1f, baseY - height * 0.38f, paint)
+        paint.strokeWidth *= 0.82f
+        paint.color = Color.rgb(42, 132, 79)
+        canvas.drawLine(x + sway * 0.25f - 1f, baseY - height * 0.38f,
+            x + sway * 0.72f + 1f, baseY - height * 0.78f, paint)
+        paint.strokeWidth *= 0.78f
+        paint.color = Color.rgb(82, 164, 91)
+        canvas.drawLine(x + sway * 0.72f + 1f, baseY - height * 0.78f,
+            x + sway, baseY - height, paint)
+        // Small side leaf breaks up the spear-like silhouette.
+        paint.strokeWidth = 1.5f
+        paint.color = Color.rgb(48, 119, 70)
+        canvas.drawLine(x - 1f, baseY - height * 0.34f,
+            x - 4f + sway * 0.18f, baseY - height * 0.52f, paint)
         paint.color = oldColor
         paint.style = oldStyle
         paint.strokeWidth = oldStrokeWidth
         paint.alpha = oldAlpha
-        paint.strokeCap = Paint.Cap.BUTT
+        paint.strokeCap = oldCap
         paint.shader = null
     }
 
-    /**
-     * Draws three curved, wind-swayed grass blades on a ledge.
-     */
+    /** Dense, varied tuft with overlapping leaves, rather than three isolated spikes. */
     fun drawGrassPatch(canvas: Canvas, paint: Paint, x: Float, y: Float, wind: Float) {
-        drawGrassBlade(canvas, paint, x - 4f, y, 15f, wind * 0.55f - 2f)
-        drawGrassBlade(canvas, paint, x, y, 23f, wind)
-        drawGrassBlade(canvas, paint, x + 5f, y, 18f, wind * 0.75f + 2f)
+        drawGrassBlade(canvas, paint, x - 8f, y, 12f, wind * 0.35f - 1f)
+        drawGrassBlade(canvas, paint, x - 5f, y, 19f, wind * 0.65f - 2f)
+        drawGrassBlade(canvas, paint, x - 2f, y, 15f, wind * 0.45f + 1f)
+        drawGrassBlade(canvas, paint, x + 1f, y, 25f, wind)
+        drawGrassBlade(canvas, paint, x + 4f, y, 17f, wind * 0.7f + 2f)
+        drawGrassBlade(canvas, paint, x + 7f, y, 13f, wind * 0.4f + 1f)
+        drawGrassBlade(canvas, paint, x + 10f, y, 20f, wind * 0.8f - 1f)
     }
 
 }
