@@ -303,7 +303,7 @@ class GameWorld {
         paint.textSize = 28f
         paint.isFakeBoldText = true
         val weaponName = when (player.state) {
-            PlayerState.HOLDING_ENEMY -> "🧷 GRABBED! Press HEADBUTT (💥)"
+            PlayerState.HOLDING_ENEMY -> "🧷 PULLING ENEMY IN..."
             PlayerState.PARRYING -> "🛡️ PARRYING!"
             PlayerState.HEALING -> "✨ FOCUSING SOUL..."
             else -> "🧷 Safety Pin Equipped"
