@@ -29,7 +29,8 @@ enum class PlayerState {
     HEADBUTTING,   // Smashing grabbed enemy with the horned mask
     PARRYING,      // Defending with clasp
     HEALING,       // Focus soul / silk to restore HP
-    HURT
+    HURT,
+    DEAD           // Brief death pause before respawning
 }
 
 enum class EnemyType {
