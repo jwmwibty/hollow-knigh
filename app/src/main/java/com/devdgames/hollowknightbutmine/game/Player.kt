@@ -790,32 +790,43 @@ class Player(
                 canvas.drawCircle(guardX, pinOriginY - 32f, 7f, paint)
             }
             else -> {
-                // Idle / Running: Wielded over shoulder / diagonally strapped across back
-                val angleDir = dir
-                val backX = pinOriginX - angleDir * 20f
-                val backY = pinOriginY - 26f
-                val frontX = pinOriginX + angleDir * 24f
-                val frontY = pinOriginY + 20f
+                // Idle / running: a compact Hollow-Knight-style nail, not a long staff.
+                // The blade sits low in the hand with a slight hooked tip and restrained metal glint.
+                val gripX = pinOriginX + dir * 8f
+                val gripY = pinOriginY + 9f
+                val guardX = gripX + dir * 5f
+                val guardY = gripY - 1f
+                val tipX = gripX + dir * 34f
+                val tipY = gripY - 13f
 
-                // Main bronze shaft
+                // Dark wrapped handle.
                 paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 4.5f
-                paint.color = Color.rgb(195, 150, 80) // Weathered bronze
-                canvas.drawLine(backX, backY, frontX, frontY, paint)
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.strokeWidth = 5f
+                paint.color = Color.rgb(48, 43, 37)
+                canvas.drawLine(gripX - dir * 9f, gripY + 5f, gripX + dir * 3f, gripY, paint)
 
-                // Large clasp at bottom front (like reference art)
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 3f
-                paint.color = Color.rgb(160, 120, 60)
-                val claspRect = RectF(frontX - 4f, frontY - 3f, frontX + angleDir * 18f, frontY + 18f)
-                canvas.drawRoundRect(claspRect, 6f, 6f, paint)
-                // Inner hollow opening of safety pin clasp
-                canvas.drawCircle(frontX + angleDir * 8f, frontY + 7f, 3.5f, paint)
+                // Small brass crossguard.
+                paint.strokeWidth = 3.2f
+                paint.color = Color.rgb(173, 133, 69)
+                canvas.drawLine(guardX - dir * 5f, guardY + 6f, guardX + dir * 5f, guardY - 4f, paint)
 
-                // Large spring coil loop at the top back
-                paint.strokeWidth = 3.5f
-                canvas.drawCircle(backX, backY, 7.5f, paint)
-                canvas.drawPoint(backX, backY, paint)
+                // Tapered pale-steel nail blade, with a gentle hooked curve.
+                val blade = Path()
+                blade.moveTo(guardX, guardY - 1f)
+                blade.quadTo(gripX + dir * 20f, gripY - 12f, tipX, tipY)
+                blade.quadTo(tipX - dir * 4f, tipY + 8f, tipX - dir * 10f, tipY + 8f)
+                paint.strokeWidth = 4.2f
+                paint.color = Color.rgb(166, 184, 174)
+                canvas.drawPath(blade, paint)
+                paint.strokeWidth = 1.35f
+                paint.color = Color.rgb(230, 239, 219)
+                canvas.drawLine(guardX + dir * 2f, guardY - 3f, tipX - dir * 3f, tipY + 1f, paint)
+
+                // Tiny pommel, kept close to the hand so the silhouette reads as a nail.
+                paint.style = Paint.Style.FILL
+                paint.color = Color.rgb(196, 151, 78)
+                canvas.drawCircle(gripX - dir * 10f, gripY + 5f, 3f, paint)
             }
         }
     }
