@@ -110,12 +110,15 @@ class GameWorld {
             val room = placement.room
             val offset = placement.offsetX
 
-            // Remove only the old per-room side walls. The outer world gets its own walls below.
+            // Remove internal room walls so passageways stay open. Keep the two outermost
+            // boundary walls, especially the final wall where the last floor ends.
             for (local in room.platforms) {
-                val isSideWall = local.height() > 800f &&
-                    (abs(local.left - room.bounds.left) < 1f ||
-                     abs(local.right - room.bounds.right) < 1f)
-                if (!isSideWall) {
+                val isLeftWall = local.height() > 800f && abs(local.left - room.bounds.left) < 1f
+                val isRightWall = local.height() > 800f && abs(local.right - room.bounds.right) < 1f
+                val isOuterWall =
+                    (placement == roomPlacements.first() && isLeftWall) ||
+                    (placement == roomPlacements.last() && isRightWall)
+                if ((!isLeftWall && !isRightWall) || isOuterWall) {
                     platforms.add(RectF(local.left + offset, local.top, local.right + offset, local.bottom))
                 }
             }
