@@ -661,7 +661,7 @@ class Player(
             state == PlayerState.DASHING -> 2f
             else -> 0f
         }
-        val landingDip = if (landingTimer > 0f) sin((landingTimer / 0.22f) * Math.PI).toFloat() * 4f else 0f
+        val landingDip = if (landingTimer > 0f) sin((landingTimer / 0.22f) * 3.1415927f) * 4f else 0f
         val headCenterX = x + headOffsetX + if (state == PlayerState.DASHING) dir * 3f else 0f
         val headCenterY = y - height * 0.82f + runBob + jumpTilt + landingDip
         val headRadius = 16f
@@ -751,7 +751,7 @@ class Player(
                 val progress = if (state == PlayerState.GRABBING)
                     (1f - stateTimer / 0.25f).coerceIn(0f, 1f) else 1f
                 val reach = if (state == PlayerState.HOLDING_ENEMY) 50f else 18f + 38f * (1f - (1f - progress) * (1f - progress))
-                val lift = if (state == PlayerState.HOLDING_ENEMY) 0f else sin(progress * Math.PI).toFloat() * 7f
+                val lift = if (state == PlayerState.HOLDING_ENEMY) 0f else sin(progress * 3.1415927f) * 7f
                 val tipX = pinOriginX + dir * reach
                 val hook = Path()
                 hook.moveTo(pinOriginX - dir * 10f, pinOriginY + 4f)
