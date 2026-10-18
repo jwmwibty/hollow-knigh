@@ -144,7 +144,7 @@ fun VirtualDPad(
     ) {
         // Left Button
         ControlButton(
-            label = "◀",
+            label = "left",
             subLabel = "LEFT",
             size = 68.dp,
             isPressed = leftPressed,
@@ -160,7 +160,7 @@ fun VirtualDPad(
 
         // Right Button
         ControlButton(
-            label = "▶",
+            label = "right",
             subLabel = "RIGHT",
             size = 68.dp,
             isPressed = rightPressed,
