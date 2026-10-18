@@ -113,17 +113,14 @@ class Player(
      * Safety Pin Grab (Hooking enemy with the clasp)
      */
     fun grab() {
-        if (state == PlayerState.HOLDING_ENEMY) {
-            // Already holding enemy -> execute Headbutt!
-            executeHeadbutt()
-            return
-        }
-        if (state == PlayerState.DASHING || state == PlayerState.HEADBUTTING) return
+        // While an enemy is being pulled in, don't restart the grab or require another press.
+        if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
+        if (state == PlayerState.DASHING) return
 
         state = PlayerState.GRABBING
         stateTimer = 0.25f
 
-        val reach = 74f
+        val reach = 150f // Long-range hook so the grab has a useful pull distance.
         val attackX = if (facing == Facing.RIGHT) x + 10f else x - 10f - reach
         val attackBox = RectF(attackX, y - height * 0.75f, attackX + reach, y - height * 0.2f)
         activeHitbox = AttackHitbox(rect = attackBox, damage = 5, isGrab = true)
@@ -252,11 +249,10 @@ class Player(
                     target.vx = 0f
                     target.vy = 0f
 
+                    // The enemy is pulled into range; headbutt automatically, no second button press.
                     stateTimer -= dt
-                    if (stateTimer <= 0f) {
-                        target.isGrabbed = false
-                        grabbedEnemy = null
-                        state = PlayerState.IDLE
+                    if (stateTimer <= 0f && grabbedEnemy === target) {
+                        executeHeadbutt()
                     }
                 }
             }
@@ -343,7 +339,7 @@ class Player(
                         enemy.takeDamage(attack.damage)
                         grabbedEnemy = enemy
                         state = PlayerState.HOLDING_ENEMY
-                        stateTimer = 2.5f
+                        stateTimer = 0.20f // Brief pull-in beat, then automatically headbutt.
                         activeHitbox = null
                         break
                     } else {
