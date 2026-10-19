@@ -16,7 +16,7 @@ import kotlin.math.sin
  * - Chapter 2 Boss: OSSUARY_TITAN (Gigantic stone/bone monolith; seismic earth quakes, ground slam shockwaves, bone armor)
  * - Chapter 3 Boss: COLONNADE_KNIGHT (Royal duelist; safety pin lance thrust, teleport dash strike, parry stance)
  */
-class Enemy(
+open class Enemy(
     var x: Float,
     var y: Float,
     var width: Float = 46f,
@@ -115,12 +115,21 @@ class Enemy(
         }
     }
 
-    fun getBoundingBox(): RectF {
+    open fun getBoundingBox(): RectF {
         hitbox.set(x - width / 2, y - height, x + width / 2, y)
         return hitbox
     }
 
-    fun takeDamage(damage: Int, knockbackX: Float = 0f, knockbackY: Float = 0f, playEffect: (() -> Unit)? = null) {
+    /**
+     * True when this enemy hurts a player occupying [playerBox] right now. Ordinary enemies hurt
+     * on any body contact; bosses add weapon boxes and hazards (see game/boss/BossEnemy).
+     */
+    open fun hurtsPlayer(playerBox: RectF): Boolean = RectF.intersects(playerBox, getBoundingBox())
+
+    /** Masks taken by the contact that [hurtsPlayer] just reported. */
+    open val touchDamage: Int get() = 1
+
+    open fun takeDamage(damage: Int, knockbackX: Float = 0f, knockbackY: Float = 0f, playEffect: (() -> Unit)? = null) {
         if (!isAlive || invincibilityTimer > 0f) return
 
         // Shielder blocks frontal attacks
@@ -149,7 +158,7 @@ class Enemy(
         }
     }
 
-    fun stun(duration: Float) {
+    open fun stun(duration: Float) {
         // Bosses recover faster from stun
         val actualDuration = if (isBoss) duration * 0.5f else duration
         isStunned = true
@@ -159,7 +168,7 @@ class Enemy(
         attackWindup = 0f
     }
 
-    fun update(dt: Float, playerX: Float, playerY: Float, platforms: List<RectF>) {
+    open fun update(dt: Float, playerX: Float, playerY: Float, platforms: List<RectF>) {
         if (!isAlive) return
 
         if (invincibilityTimer > 0f) invincibilityTimer -= dt
@@ -584,7 +593,7 @@ class Enemy(
         }
     }
 
-    fun draw(canvas: Canvas, paint: Paint) {
+    open fun draw(canvas: Canvas, paint: Paint) {
         if (!isAlive) return
 
         val dir = if (facing == Facing.RIGHT) 1f else -1f

@@ -8,6 +8,15 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import com.devdgames.hollowknightbutmine.game.env.AreaScene
 import com.devdgames.hollowknightbutmine.game.env.Backdrops
+import com.devdgames.hollowknightbutmine.game.boss.BossArena
+import com.devdgames.hollowknightbutmine.game.boss.BossArt
+import com.devdgames.hollowknightbutmine.game.boss.BossEncounter
+import com.devdgames.hollowknightbutmine.game.boss.BossEnemy
+import com.devdgames.hollowknightbutmine.game.boss.BossProgress
+import com.devdgames.hollowknightbutmine.game.boss.BossRoster
+import com.devdgames.hollowknightbutmine.game.boss.BossSignal
+import com.devdgames.hollowknightbutmine.game.boss.BossSpec
+import com.devdgames.hollowknightbutmine.game.boss.SignalType
 import com.devdgames.hollowknightbutmine.game.env.EnemySpawnPoint
 import com.devdgames.hollowknightbutmine.game.world.AreaDef
 import com.devdgames.hollowknightbutmine.game.world.WorldAtlas
@@ -70,6 +79,26 @@ class GameWorld {
 
     private class SpawnRecord(val areaId: String, val point: EnemySpawnPoint, var enemy: Enemy?)
     private val spawnRecords = ArrayList<SpawnRecord>()
+
+    // ------------------------------------------------------------------ bosses
+    /** One boss hall: its encounter, the animated doors and the HUD bar. */
+    private class BossRig(val spec: BossSpec, val arena: BossArena, val encounter: BossEncounter, val enemy: BossEnemy) {
+        val gateRect = RectF(arena.gate.left, arena.gate.top, arena.gate.right, arena.gate.bottom)
+
+        /** 0 = raised, 1 = shut (animated). */
+        var gate = 0f
+        var barAlpha = 0f
+        var barHp = 1f
+        var barGhost = 1f
+        val shotGlow: Int = spec.accent
+        val shotCore: Int = Color.rgb(
+            (Color.red(spec.accent) + 255) / 2, (Color.green(spec.accent) + 255) / 2, (Color.blue(spec.accent) + 255) / 2
+        )
+    }
+
+    private val bossProgress = BossProgress()
+    private val bossRigs = ArrayList<BossRig>()
+    private val frameSolids = ArrayList<RectF>()
 
     // ------------------------------------------------------------------ progress
     val discovered = LinkedHashSet<String>()
@@ -142,6 +171,7 @@ class GameWorld {
         lastSafeY = worldSpawnY
 
         populateEnemies()
+        buildBosses()
         enterArea(spawnScene, announce = true)
         cameraX = player.x - 600f
         cameraY = player.y - DESIGN_VIEW_H * 0.6f
@@ -182,6 +212,23 @@ class GameWorld {
             rec.enemy = e
             enemies.add(e)
         }
+    }
+
+    /**
+     * The east-wing bosses: each has its own hall, doors and encounter. Victories are remembered
+     * in [bossProgress] for the run, like the older bosses that stay slain; the permanent mask
+     * each one grants is derived from it, so a reward can never be granted twice.
+     */
+    private fun buildBosses() {
+        for (spec in BossRoster.all) {
+            val arena = BossRoster.arenaFor(spec, layout)
+            val encounter = BossEncounter(spec, arena, BossRoster.brainFor(spec, arena), bossProgress)
+            val enemy = BossEnemy(encounter)
+            enemies.add(enemy)
+            bossRigs.add(BossRig(spec, arena, encounter, enemy))
+            if (bossProgress.isDefeated(spec.id)) player.maxMasks += spec.maskReward
+        }
+        player.currentMasks = player.maxMasks
     }
 
     /** Benches bring the common fauna back; slain bosses stay slain. */
@@ -267,6 +314,7 @@ class GameWorld {
     }
 
     private fun respawnPlayer(full: Boolean) {
+        abortBossFights()
         val bench = currentBench
         player.x = bench?.x ?: worldSpawnX
         player.y = bench?.y ?: worldSpawnY
@@ -317,7 +365,7 @@ class GameWorld {
         player.update(
             dt = dt,
             inputX = inputX,
-            platforms = nearSolids,
+            platforms = withGates(nearSolids),
             enemies = enemies,
             onParryTriggered = {
                 triggerShake(9f, 0.25f)
@@ -334,6 +382,7 @@ class GameWorld {
             player.grabbedEnemy = null
             deathTimer = 2.2f
             triggerShake(12f, 0.35f)
+            abortBossFights()
         }
 
         if (!prevHeadbutt && player.state == PlayerState.HEADBUTTING) {
@@ -342,12 +391,17 @@ class GameWorld {
         }
 
         // ---- enemies (only the ones near enough to matter)
+        val playerDying = player.state == PlayerState.DEAD
+        for (rig in bossRigs) rig.enemy.playerDead = playerDying
         for (enemy in enemies) {
             if (!enemy.isAlive) continue
-            if (abs(enemy.x - player.x) > ACTIVE_RANGE_X || abs(enemy.y - player.y) > ACTIVE_RANGE_Y) continue
+            // A boss fight in progress always runs, however wide its hall is.
+            val inFight = enemy is BossEnemy && enemy.encounter.gateClosed
+            if (!inFight && (abs(enemy.x - player.x) > ACTIVE_RANGE_X || abs(enemy.y - player.y) > ACTIVE_RANGE_Y)) continue
             val ebox = enemy.getBoundingBox()
             enemy.update(dt, player.x, player.y, solids.query(ebox, 120f))
         }
+        updateBosses(dt)
 
         // ---- projectiles
         val projIter = projectiles.iterator()
@@ -377,7 +431,8 @@ class GameWorld {
             } else {
                 for (enemy in enemies) {
                     if (enemy.isAlive && RectF.intersects(enemy.getBoundingBox(), projBox)) {
-                        enemy.takeDamage(35, if (proj.vx > 0) 180f else -180f, -60f)
+                        if (enemy is BossEnemy) enemy.takeReflect()
+                        else enemy.takeDamage(35, if (proj.vx > 0) 180f else -180f, -60f)
                         proj.isAlive = false
                         projIter.remove()
                         spawnSparks(enemy.x, enemy.y - enemy.height / 2, 12, Color.CYAN)
@@ -475,9 +530,137 @@ class GameWorld {
         spawnSparks(b.x, b.y - 30f, 18, Color.rgb(255, 230, 170))
     }
 
+    // ===================================================================== bosses
+
+    /** The doors of any fight in progress join the solids the player collides with. */
+    private fun withGates(near: List<RectF>): List<RectF> {
+        var shut = false
+        for (rig in bossRigs) if (rig.encounter.gateClosed) { shut = true; break }
+        if (!shut) return near
+        frameSolids.clear()
+        frameSolids.addAll(near)
+        for (rig in bossRigs) if (rig.encounter.gateClosed) frameSolids.add(rig.gateRect)
+        return frameSolids
+    }
+
+    /** The player fell: every fight in progress ends, bosses go back to sleep at full health. */
+    private fun abortBossFights() {
+        for (rig in bossRigs) rig.encounter.onPlayerDied()
+    }
+
+    private fun updateBosses(dt: Float) {
+        for (rig in bossRigs) {
+            val brain = rig.encounter.brain
+            for (s in brain.shots) {
+                projectiles.add(
+                    Projectile(x = s.x, y = s.y, vx = s.vx, vy = s.vy, radius = s.radius, glowColor = rig.shotGlow, coreColor = rig.shotCore)
+                )
+            }
+            brain.shots.clear()
+            for (sig in brain.signals) onBossSignal(rig, sig)
+            brain.signals.clear()
+
+            val reward = rig.encounter.takeReward()
+            if (reward > 0) grantBossReward(reward)
+
+            val shut = if (rig.encounter.gateClosed) 1f else 0f
+            rig.gate += (shut - rig.gate).coerceIn(-dt / 0.55f, dt / 0.55f)
+
+            val fighting = rig.encounter.gateClosed
+            rig.barAlpha += ((if (fighting) 1f else 0f) - rig.barAlpha).coerceIn(-dt / 0.6f, dt / 0.35f)
+            val frac = brain.healthFraction
+            if (!fighting && frac >= 0.999f) {
+                rig.barHp = 1f
+                rig.barGhost = 1f
+            } else {
+                rig.barHp += (frac - rig.barHp) * (1f - kotlin.math.exp(-dt * 14f))
+                rig.barGhost = if (rig.barGhost > frac) max(frac, rig.barGhost - dt * 0.25f) else frac
+            }
+        }
+    }
+
+    private fun onBossSignal(rig: BossRig, s: BossSignal) {
+        when (s.type) {
+            SignalType.AWAKEN -> {
+                triggerShake(7f, 0.5f)
+                showTitle(rig.spec.name, rig.spec.title, 3.4f)
+                bindHallBench(rig)
+            }
+            SignalType.HIT -> spawnSparks(s.x, s.y, 8, Color.rgb(255, 245, 215))
+            SignalType.GUARD -> spawnSparks(s.x, s.y, 3, Color.rgb(150, 160, 190))
+            SignalType.STAGGER -> {
+                triggerShake(8f, 0.25f)
+                spawnSparks(s.x, s.y, 16, Color.rgb(255, 224, 120))
+            }
+            SignalType.PHASE -> {
+                triggerShake(14f, 0.7f)
+                spawnSparks(s.x, s.y, 30, rig.spec.accent)
+            }
+            SignalType.DYING -> {
+                triggerShake(16f, 0.9f)
+                spawnSparks(s.x, s.y, 44, rig.spec.accent)
+            }
+            SignalType.DEFEATED -> {
+                showTitle(rig.spec.name, rig.spec.defeatLine, 3.8f)
+                spawnSparks(s.x, s.y, 40, rig.spec.accent)
+            }
+            SignalType.LAND -> {
+                triggerShake(9f, 0.3f)
+                spawnSparks(s.x, s.y, 10, Color.rgb(200, 190, 220))
+            }
+            SignalType.WALL_CRASH -> {
+                triggerShake(16f, 0.45f)
+                spawnSparks(s.x, s.y, 30, Color.rgb(255, 190, 240))
+            }
+            SignalType.SHOT -> spawnSparks(s.x, s.y, 5, rig.spec.accent)
+            SignalType.TELEGRAPH, SignalType.STRIKE -> {}
+        }
+    }
+
+    /**
+     * A defeat must send the player back to the hall's door, not across the kingdom, even if they
+     * never sat on its bench: the moment a fight starts, that bench becomes the respawn point.
+     */
+    private fun bindHallBench(rig: BossRig) {
+        val bench = benches.firstOrNull { it.areaId == rig.spec.areaId } ?: return
+        for (o in benches) o.isCurrent = false
+        bench.isCurrent = true
+        bench.discovered = true
+        currentBench = bench
+    }
+
+    private fun showTitle(name: String, sub: String, duration: Float) {
+        titleName = name
+        titleSub = sub
+        titleDuration = duration
+        titleTimer = duration
+    }
+
+    /** One permanent mask per victory, granted exactly once by [BossEncounter.takeReward]. */
+    private fun grantBossReward(masks: Int) {
+        player.maxMasks += masks
+        player.currentMasks = player.maxMasks
+        player.soul = max(player.soul, 66)
+        spawnSparks(player.x, player.y - player.height / 2f, 26, Color.rgb(255, 232, 160))
+    }
+
+    /** The fight's arena, while its doors are shut. */
+    private fun fightingRig(): BossRig? {
+        for (rig in bossRigs) if (rig.encounter.gateClosed) return rig
+        return null
+    }
+
     private fun updateCamera(dt: Float) {
         val look = if (player.facing == Facing.RIGHT) 70f else -70f
-        val targetX = player.x + look - viewW / 2f
+        var targetX = player.x + look - viewW / 2f
+        // During a boss fight the view stays on the arena: it never wanders into the antechamber.
+        val lock = fightingRig()
+        if (lock != null) {
+            val a = lock.arena
+            val lo = a.left - 24f
+            val hi = a.right + 24f - viewW
+            targetX = if (hi >= lo) targetX.coerceIn(lo, hi) else a.centerX - viewW / 2f
+        }
 
         // Vertical: lock to the ground when standing; while airborne only move when the
         // player leaves a generous band, which keeps jumps from bouncing the view.
@@ -538,6 +721,11 @@ class GameWorld {
         for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawWorld(canvas, paint, view, gameTime)
         for (b in benches) if (b.x > view.left - 80f && b.x < view.right + 80f && b.y > view.top - 80f && b.y < view.bottom + 80f) b.draw(canvas, paint, gameTime)
 
+        for (rig in bossRigs) {
+            if (rig.gate > 0.01f && RectF.intersects(rig.gateRect, view)) {
+                BossArt.drawGate(canvas, paint, rig.arena.gate, rig.gate, rig.spec.accent, gameTime)
+            }
+        }
         for (enemy in enemies) {
             if (!enemy.isAlive) continue
             if (enemy.x < view.left - 200f || enemy.x > view.right + 200f || enemy.y < view.top - 200f || enemy.y > view.bottom + 200f) continue
@@ -692,7 +880,7 @@ class GameWorld {
 
     private fun drawHUD(canvas: Canvas, paint: Paint, screenWidth: Float, screenHeight: Float) {
         // Compact, text-free HUD: Soul meter + five readable masks.
-        val panel = RectF(18f, 16f, 278f, 84f)
+        val panel = RectF(18f, 16f, 278f + 32f * (player.maxMasks - 5), 84f)
         paint.shader = null
         paint.style = Paint.Style.FILL
         paint.color = Color.argb(190, 8, 13, 23)
@@ -766,6 +954,60 @@ class GameWorld {
         paint.alpha = 255
         paint.style = Paint.Style.FILL
         paint.strokeCap = Paint.Cap.BUTT
+        drawBossBar(canvas, paint, screenWidth)
+    }
+
+    /** Name, hit points and phase mark of the boss being fought, in the same quiet panel style. */
+    private fun drawBossBar(canvas: Canvas, paint: Paint, screenWidth: Float) {
+        for (rig in bossRigs) {
+            val a = rig.barAlpha
+            if (a <= 0.01f) continue
+            val w = min(screenWidth * 0.44f, 560f)
+            val left = (screenWidth - w) / 2f
+            val cx = screenWidth / 2f
+            val top = 46f
+            val h = 14f
+            val accent = rig.spec.accent
+
+            paint.shader = null
+            paint.style = Paint.Style.FILL
+            paint.typeface = serif
+            paint.textAlign = Paint.Align.CENTER
+            paint.letterSpacing = 0.16f
+            paint.textSize = 17f
+            paint.color = Color.argb((a * 235f).toInt(), 232, 236, 246)
+            canvas.drawText(rig.spec.name.uppercase(), cx, top - 9f, paint)
+
+            paint.color = Color.argb((a * 190f).toInt(), 8, 13, 23)
+            canvas.drawRoundRect(left, top, left + w, top + h, 7f, 7f, paint)
+            val inner = w - 6f
+            if (rig.barGhost > rig.barHp) {
+                paint.color = Color.argb((a * 120f).toInt(), 255, 255, 255)
+                canvas.drawRoundRect(left + 3f, top + 3f, left + 3f + inner * rig.barGhost, top + h - 3f, 4f, 4f, paint)
+            }
+            paint.color = Color.argb((a * 255f).toInt(), Color.red(accent), Color.green(accent), Color.blue(accent))
+            canvas.drawRoundRect(left + 3f, top + 3f, left + 3f + inner * rig.barHp.coerceIn(0f, 1f), top + h - 3f, 4f, 4f, paint)
+            // where the second phase begins
+            val notch = left + 3f + inner * (rig.spec.phase2Hp.toFloat() / rig.spec.maxHp)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.5f
+            paint.color = Color.argb((a * 190f).toInt(), 200, 210, 230)
+            canvas.drawLine(notch, top + 2f, notch, top + h - 2f, paint)
+            paint.color = Color.argb((a * 155f).toInt(), 125, 165, 183)
+            canvas.drawRoundRect(left, top, left + w, top + h, 7f, 7f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.letterSpacing = 0.08f
+            paint.textSize = 11f
+            paint.color = Color.argb((a * 170f).toInt(), 190, 200, 220)
+            canvas.drawText(rig.spec.title, cx, top + h + 16f, paint)
+
+            paint.letterSpacing = 0f
+            paint.typeface = Typeface.DEFAULT
+            paint.textAlign = Paint.Align.LEFT
+            paint.alpha = 255
+            paint.strokeWidth = 1f
+        }
     }
 
     companion object {

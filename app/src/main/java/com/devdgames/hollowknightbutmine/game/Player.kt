@@ -33,7 +33,8 @@ class Player(
     var isGrounded = false
 
     // Stats
-    val maxMasks = 5
+    /** Health masks. Starts at 5; each boss victory adds one (see game/boss). */
+    var maxMasks = 5
     var currentMasks = 5
     var soul = 33 // 0 to 100
     val maxSoul = 100
@@ -400,8 +401,8 @@ class Player(
             val playerBox = getBoundingBox()
             for (enemy in enemies) {
                 if (enemy.isAlive && !enemy.isGrabbed && !enemy.isStunned) {
-                    if (RectF.intersects(playerBox, enemy.getBoundingBox())) {
-                        takeDamage(1)
+                    if (enemy.hurtsPlayer(playerBox)) {
+                        takeDamage(enemy.touchDamage)
                         break
                     }
                 }
