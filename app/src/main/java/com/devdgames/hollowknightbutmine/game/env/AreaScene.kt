@@ -11,6 +11,7 @@ import com.devdgames.hollowknightbutmine.game.world.AreaDef
 import com.devdgames.hollowknightbutmine.game.world.AreaGrid
 import com.devdgames.hollowknightbutmine.game.world.Biome
 import com.devdgames.hollowknightbutmine.game.world.EdgeRun
+import com.devdgames.hollowknightbutmine.game.world.Flora
 import com.devdgames.hollowknightbutmine.game.world.TileRect
 import com.devdgames.hollowknightbutmine.game.world.WorldLayout
 import kotlin.math.abs
@@ -58,7 +59,7 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         val strokes = ArrayList<Triple<Path, Int, Float>>()
         val glows = ArrayList<FloatArray>() // x, y, rx, ry, alpha, warm
     }
-    private class LedgeArt(val rect: RectF, val tufts: Path?)
+    private class LedgeArt(val rect: RectF, val moss: Path?)
     private class PropAt(val x: Float, val y: Float, val seed: Int, val bounds: RectF, val hangY: Float = Float.NaN, val ceilY: Float = Float.NaN)
 
     private val masses = ArrayList<RectF>()
@@ -67,6 +68,8 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
     private val bottomRims = ArrayList<RectF>()
     private val pieces = ArrayList<Piece>()
     private val ledgeArt = ArrayList<LedgeArt>()
+    /** Grass, moss cushions, roots and flowers, in swaying ~96 px chunks (see [FloraArt]). */
+    private val flora = ArrayList<FloraChunk>()
     private val acidPools = ArrayList<RectF>()
     private val spikeBeds = ArrayList<RectF>()
     private val lamps = ArrayList<PropAt>()
@@ -193,35 +196,15 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         while (x < x1) { x = min(x1, x + 12f); crown.lineTo(x, crownY(x)) }
         piece.strokes.add(Triple(crown, pal.rockRim, 2.2f))
 
-        if (pal.grassy || biome == Biome.FUNGAL) {
-            // moss band
-            val band = Path()
-            band.moveTo(x0, crownY(x0) - 0.5f)
-            x = x0
-            while (x < x1) { x = min(x1, x + 12f); band.lineTo(x, crownY(x) - 0.5f) }
-            x = x1
-            while (x > x0) { band.lineTo(x, crownY(x) + 4.5f + sin(x * 0.09f + phB) * 2.2f); x -= 12f }
-            band.lineTo(x0, crownY(x0) + 4.5f)
-            band.close()
-            piece.fills.add(band to pal.moss)
-
-            // tufts
-            val tufts = Path()
-            x = x0 + 3f
-            while (x < x1 - 3f) {
-                val h = 4f + rnd.nextFloat() * 9f
-                val lean = (rnd.nextFloat() - 0.5f) * 8f
-                EnvArt.tapered(tufts, x, crownY(x) + 1f, x + lean * 0.4f, crownY(x) - h * 0.55f, x + lean, crownY(x) - h, 1.6f + rnd.nextFloat() * 1.4f, 0.45f, 5)
-                x += 5f + rnd.nextFloat() * 9f
-            }
-            piece.fills.add(tufts to pal.mossLit)
-
-            // glowing specks
-            x = x0 + 6f
-            while (x < x1 - 6f) {
-                if (rnd.nextFloat() < 0.3f) piece.glows.add(floatArrayOf(x, crownY(x) + 1.5f, 1.4f + rnd.nextFloat() * 1.2f, 0f, 255f, if (rnd.nextFloat() < 0.3f) 1f else 0f))
-                x += 18f + rnd.nextFloat() * 40f
-            }
+        // Vegetation: patchy moss, clumped grass, roots and tiny plants, only in biomes that
+        // grow them and never beside a hazard (see world/Flora.kt for the rules).
+        val profile = Flora.profile(biome)
+        if (profile != null) {
+            val seed = Flora.seed(def.id, run.col, run.row)
+            val plan = Flora.plan(profile, seed, x0, x1, Flora.SURFACE_ROCK, keepOutFor(run))
+            val moss = FloraArt.mossPath(plan, seed) { px -> crownY(px) }
+            if (moss != null) piece.fills.add(moss to pal.moss)
+            flora.addAll(FloraArt.build(plan, profile, pal, seed, x0, x1) { px -> crownY(px) })
         }
 
         when (biome) {
@@ -457,21 +440,44 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
     }
 
     private fun buildLedges() {
+        val profile = Flora.profile(biome)
         for (i in ledgeRects.indices) {
             val r = ledgeRects[i]
-            var tufts: Path? = null
-            if (pal.grassy || biome == Biome.FUNGAL) {
-                tufts = Path()
-                var x = r.left + 4f
-                while (x < r.right - 4f) {
-                    val h = 4f + rnd.nextFloat() * 7f
-                    val lean = (rnd.nextFloat() - 0.5f) * 6f
-                    EnvArt.tapered(tufts, x, r.top + 1f, x + lean * 0.4f, r.top - h * 0.5f, x + lean, r.top - h, 1.5f, 0.4f, 4)
-                    x += 7f + rnd.nextFloat() * 10f
-                }
+            var moss: Path? = null
+            if (profile != null) {
+                val seed = Flora.seed(def.id, (r.left / T).toInt(), (r.top / T).toInt(), 17)
+                val plan = Flora.plan(profile, seed, r.left + 3f, r.right - 3f, Flora.SURFACE_LEDGE)
+                val top = r.top + 0.5f
+                moss = FloraArt.mossPath(plan, seed) { top }
+                flora.addAll(FloraArt.build(plan, profile, pal, seed, r.left + 3f, r.right - 3f) { top })
             }
-            ledgeArt.add(LedgeArt(r, tufts))
+            ledgeArt.add(LedgeArt(r, moss))
         }
+    }
+
+    /**
+     * x-intervals along [run] where a hazard sits on (or is level with) the surface, so plants
+     * keep clear of spike beds and acid and can never be mistaken for them.
+     */
+    private fun keepOutFor(run: EdgeRun): FloatArray {
+        val x0 = run.col * T
+        val x1 = (run.col + run.length) * T
+        val out = ArrayList<Float>()
+        for (s in grid.spikes) {
+            if (s.bottom == run.row && s.right * T > x0 - 1f && s.col * T < x1 + 1f) {
+                out.add(s.col * T); out.add(s.right * T)
+            }
+        }
+        for (a in grid.acid) {
+            if (a.bottom == run.row && a.right * T > x0 - 1f && a.col * T < x1 + 1f) {
+                out.add(a.col * T); out.add(a.right * T)
+            } else if (a.row <= run.row && a.bottom > run.row) {
+                // a pool beside this platform, level with its surface: keep the end clear
+                if (abs(a.right * T - x0) < 1f) { out.add(x0 - 8f); out.add(x0 + 8f) }
+                if (abs(a.col * T - x1) < 1f) { out.add(x1 - 8f); out.add(x1 + 8f) }
+            }
+        }
+        return out.toFloatArray()
     }
 
     private fun buildHazards() {
@@ -537,6 +543,9 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         for (p in pieces) if (vis(p.bounds, view)) drawPiece(canvas, paint, p)
 
         for (l in ledgeArt) if (vis(l.rect, view)) drawLedge(canvas, paint, l)
+
+        // Plants grow over the rock and ledges but under every actor, prop and hazard.
+        for (c in flora) if (vis(c.bounds, view)) FloraArt.draw(canvas, paint, c, t)
 
         for (a in acidPools) if (vis(a, view)) Props.acidPool(canvas, paint, a, pal.hazard, pal.hazardLit, t)
         for (s in spikeBeds) if (vis(s, view)) Props.spikeBed(canvas, paint, s.left, s.right, s.top, s.bottom, pal.hazard, pal.hazardLit)
@@ -616,7 +625,8 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         while (x < r.right - 8f) { canvas.drawLine(x, r.top + 4f, x - 2f, r.bottom + 2f, paint); x += 26f }
         paint.alpha = 255
         paint.style = Paint.Style.FILL
-        if (l.tufts != null) { paint.color = pal.mossLit; canvas.drawPath(l.tufts, paint) }
+        val moss = l.moss
+        if (moss != null) { paint.color = pal.moss; canvas.drawPath(moss, paint) }
     }
 
     companion object {
