@@ -30,4 +30,47 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
       - name: Compile Kotlin and Android resources
-        run: bash ./gradlew --no-daemon :app:compileDebugKotlin
+        shell: bash
+        run: |
+          set -o pipefail
+          bash ./gradlew --no-daemon :app:compileDebugKotlin 2>&1 | tee compile.log
+      - name: Report compiler errors as annotations
+        if: failure()
+        shell: bash
+        run: bash .github/scripts/annotate-gradle-errors.sh compile.log
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "${ANDROID_HOME}/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "Android sdkmanager was not found on the runner."
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+      - name: Run JVM unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          bash ./gradlew --no-daemon :app:testDebugUnitTest 2>&1 | tee test.log
+      - name: Report compiler errors as annotations
+        if: failure()
+        shell: bash
+        run: bash .github/scripts/annotate-gradle-errors.sh test.log
+      - name: Summarise unit test results
+        if: always()
+        shell: bash
+        run: python3 .github/scripts/summarize-unit-tests.py app/build/test-results/testDebugUnitTest
