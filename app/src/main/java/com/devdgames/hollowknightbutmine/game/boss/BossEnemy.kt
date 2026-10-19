@@ -9,9 +9,9 @@ import com.devdgames.hollowknightbutmine.game.Facing
 
 /**
  * Presents a [BossEncounter] to the rest of the game as an ordinary [Enemy], so the player's
- * existing stab, grab, headbutt and parry code works on bosses unchanged. Everything that is
- * specific to a boss fight (when it can be hurt, what hurts the player, stagger and poise) is
- * decided by the pure [BossBrain]; this class only translates.
+ * sword attacks work on bosses unchanged. Everything that is specific to a boss fight (when it
+ * can be hurt, what hurts the player, stagger and poise) is decided by the pure [BossBrain];
+ * this class only translates.
  */
 class BossEnemy(val encounter: BossEncounter) : Enemy(
     encounter.brain.x, encounter.brain.y, encounter.brain.bodyW, encounter.brain.bodyH,
@@ -36,6 +36,7 @@ class BossEnemy(val encounter: BossEncounter) : Enemy(
         hp = b.hp
         maxHp = b.maxHp
         isStunned = b.isStaggered
+        stunTimer = b.staggerRemaining
         isAttacking = b.parryOpen
         flashTimer = b.hitFlash
         vx = 0f
@@ -45,7 +46,7 @@ class BossEnemy(val encounter: BossEncounter) : Enemy(
 
     override fun update(dt: Float, playerX: Float, playerY: Float, platforms: List<RectF>) {
         if (!isAlive) return
-        encounter.update(dt, playerX, playerY, playerDead, frozen = isGrabbed)
+        encounter.update(dt, playerX, playerY, playerDead)
         sync()
     }
 
@@ -66,25 +67,8 @@ class BossEnemy(val encounter: BossEncounter) : Enemy(
         if (dealt > 0) playEffect?.invoke()
     }
 
-    /** A shot the player parried back lands on the boss. */
-    fun takeReflect() {
-        if (!isAlive) return
-        brain.damageFromReflect()
-        sync()
-    }
-
-    /**
-     * The player's parry stuns for 1.8 s and a headbutt for 0.85 s; the boss tells them apart
-     * by length, since only a parry needs the boss to be mid-attack.
-     */
-    override fun stun(duration: Float) {
-        if (!isAlive) return
-        brain.stagger(byParry = duration >= PARRY_STUN)
-        sync()
-    }
-
     override fun hurtsPlayer(playerBox: RectF): Boolean =
-        isAlive && !isGrabbed && !isStunned &&
+        isAlive && !isStunned &&
             brain.hurts(playerBox.left, playerBox.top, playerBox.right, playerBox.bottom)
 
     override val touchDamage: Int get() = brain.lastDamage
@@ -96,6 +80,5 @@ class BossEnemy(val encounter: BossEncounter) : Enemy(
 
     companion object {
         private const val FAR = -1.0e7f
-        private const val PARRY_STUN = 1.5f
     }
 }

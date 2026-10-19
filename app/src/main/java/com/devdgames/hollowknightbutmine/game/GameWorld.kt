@@ -136,7 +136,7 @@ class GameWorld {
     private var viewH = DESIGN_VIEW_H
     private val view = RectF()
 
-    // Screen shake for heavy hits (Headbutt / Parry)
+    // Screen shake for heavy hits (enemy deaths, damage taken, boss slams)
     var screenShakeTime = 0f
     var screenShakeIntensity = 0f
 
@@ -327,8 +327,7 @@ class GameWorld {
         player.invincibilityTimer = 1.35f
         player.flashTimer = 0f
         player.activeHitbox = null
-        player.grabbedEnemy?.isGrabbed = false
-        player.grabbedEnemy = null
+        player.combat.cancel()
         lastSafeX = player.x
         lastSafeY = player.y
         deathTimer = 0f
@@ -359,18 +358,13 @@ class GameWorld {
         }
 
         // ---- player
-        val prevHeadbutt = player.state == PlayerState.HEADBUTTING
         val pbox = player.getBoundingBox()
         val nearSolids = solids.query(pbox, 160f)
         player.update(
             dt = dt,
             inputX = inputX,
             platforms = withGates(nearSolids),
-            enemies = enemies,
-            onParryTriggered = {
-                triggerShake(9f, 0.25f)
-                spawnSparks(player.x + 20f, player.y - player.height / 2, 16, Color.YELLOW)
-            }
+            enemies = enemies
         )
 
         if (player.currentMasks <= 0 && player.state != PlayerState.DEAD) {
@@ -378,16 +372,10 @@ class GameWorld {
             player.vx = 0f
             player.vy = 0f
             player.activeHitbox = null
-            player.grabbedEnemy?.isGrabbed = false
-            player.grabbedEnemy = null
+            player.combat.cancel()
             deathTimer = 2.2f
             triggerShake(12f, 0.35f)
             abortBossFights()
-        }
-
-        if (!prevHeadbutt && player.state == PlayerState.HEADBUTTING) {
-            triggerShake(12f, 0.3f)
-            spawnSparks(player.x + 30f, player.y - player.height / 2, 22, Color.rgb(255, 120, 40))
         }
 
         // ---- enemies (only the ones near enough to matter)
@@ -411,34 +399,12 @@ class GameWorld {
             if (!proj.isAlive) { projIter.remove(); continue }
 
             val projBox = proj.getBoundingBox()
-            if (!proj.isReflected) {
-                if (RectF.intersects(player.getBoundingBox(), projBox)) {
-                    if (player.state == PlayerState.PARRYING) {
-                        val reflectDir = if (player.facing == Facing.RIGHT) 1f else -1f
-                        proj.reflect(reflectDir * 420f, 0f)
-                        triggerShake(8f, 0.2f)
-                        spawnSparks(proj.x, proj.y, 14, Color.CYAN)
-                        player.parrySuccess = true
-                        player.soul = (player.soul + 15).coerceAtMost(player.maxSoul)
-                    } else if (player.invincibilityTimer <= 0f) {
-                        player.takeDamage(1)
-                        hurtFlash = 0.25f
-                        proj.isAlive = false
-                        projIter.remove()
-                        spawnSparks(player.x, player.y - player.height / 2, 8, Color.YELLOW)
-                    }
-                }
-            } else {
-                for (enemy in enemies) {
-                    if (enemy.isAlive && RectF.intersects(enemy.getBoundingBox(), projBox)) {
-                        if (enemy is BossEnemy) enemy.takeReflect()
-                        else enemy.takeDamage(35, if (proj.vx > 0) 180f else -180f, -60f)
-                        proj.isAlive = false
-                        projIter.remove()
-                        spawnSparks(enemy.x, enemy.y - enemy.height / 2, 12, Color.CYAN)
-                        break
-                    }
-                }
+            if (RectF.intersects(player.getBoundingBox(), projBox) && player.invincibilityTimer <= 0f) {
+                player.takeDamage(1)
+                hurtFlash = 0.25f
+                proj.isAlive = false
+                projIter.remove()
+                spawnSparks(player.x, player.y - player.height / 2, 8, Color.YELLOW)
             }
         }
 
@@ -460,14 +426,13 @@ class GameWorld {
                     player.takeDamage(1)
                     hurtFlash = 0.35f
                 }
-                player.grabbedEnemy?.isGrabbed = false
-                player.grabbedEnemy = null
                 player.x = lastSafeX
                 player.y = lastSafeY
                 player.vx = 0f
                 player.vy = 0f
                 player.isGrounded = true
                 player.activeHitbox = null
+                player.combat.cancel()
                 if (player.state != PlayerState.DEAD) player.state = PlayerState.IDLE
                 player.invincibilityTimer = max(player.invincibilityTimer, 1.2f)
                 triggerShake(10f, 0.3f)
