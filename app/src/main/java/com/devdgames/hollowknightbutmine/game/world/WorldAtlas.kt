@@ -19,6 +19,10 @@ package com.devdgames.hollowknightbutmine.game.world
  *      108    [ Silk Deep      ][ Ancient Basin                        ]
  *      130                          [ The Abyss      ]
  *
+ * East wing: a doorway in the Resting Grounds' east wall leads to the Vigil Hall (the Keener),
+ * and one in Glimmer Peak's east wall to the Geode Court (Shardback). Both are dead-end boss
+ * halls, each with a bench in its antechamber; the encounters live in game/boss/.
+ *
  * Every opening on an area border lines up with an opening on its neighbour; the
  * [WorldLayout] validator checks this, so if you edit a map and break a passage you
  * will get a clear error listing the exact tile.
@@ -30,7 +34,10 @@ package com.devdgames.hollowknightbutmine.game.world
 object WorldAtlas {
 
     val areas: List<AreaDef> by lazy {
-        listOf(cliffs, town, crossroads, greenpath, fungal, city, resting, crystal, edge, waterways, deepnest, basin, abyss)
+        listOf(
+            cliffs, town, crossroads, greenpath, fungal, city, resting, crystal, edge, waterways, deepnest, basin, abyss,
+            vigil, geode
+        )
     }
 
     val spawnAreaId = "town"
@@ -310,9 +317,9 @@ object WorldAtlas {
             "                     =====  ##",
             "                            ##",
             "        f                   ##",
-            "##   *     *      B      *  ##",
-            "##                          ##",
-            "##      c                c  ##",
+            "##   *     *      B      *    ",
+            "##                            ",
+            "##      c                c    ",
             "#####     ####################",
             "#####     ####################",
             "#####    =####################",
@@ -343,9 +350,9 @@ object WorldAtlas {
             "##     =====                          ##",
             "##               f                    ##",
             "##                   ======           ##",
-            "##    =====                    =====  ##",
-            "##                                    ##",
-            "##                  ^^^^       c      ##",
+            "##    =====                    =====    ",
+            "##                                      ",
+            "##                  ^^^^       c        ",
             "############     #######################",
             "############     #######################",
             "                                      ##",
@@ -581,6 +588,64 @@ object WorldAtlas {
             "########################################",
             "########################################",
             "########################################"
+        )
+    )
+
+    // ------------------------------------------------------------------------------------
+    // THE VIGIL HALL  55 x 16  @ (136, 22)
+    // A dead-end chapel behind the Resting Grounds' east wall. A bench waits in the low
+    // antechamber; the doorway beyond it shuts when the Keener wakes. Arena floor is 34
+    // tiles wide and 10 tiles tall. See game/boss/BossRoster.kt for the encounter.
+    // ------------------------------------------------------------------------------------
+    private val vigil = AreaDef(
+        id = "vigil", name = "The Vigil Hall", subtitle = "Where the mourners keep watch",
+        biome = Biome.RESTING, originX = 136, originY = 22, darkness = 0.2f,
+        rows = listOf(
+            "#######################################################",
+            "#######################################################",
+            "###################                                  ##",
+            "###################           L             L        ##",
+            "###################                                  ##",
+            "###################                                  ##",
+            "##              ###                                  ##",
+            "##         L    ###                                  ##",
+            "##              ###                                  ##",
+            "                                                     ##",
+            "                                                     ##",
+            "        B            *                            *  ##",
+            "#######################################################",
+            "#######################################################",
+            "#######################################################",
+            "#######################################################"
+        )
+    )
+
+    // ------------------------------------------------------------------------------------
+    // THE GEODE COURT  59 x 16  @ (146, 5)
+    // A crystal-lined dead end past Glimmer Peak's lower hall. Same plan as the Vigil Hall:
+    // antechamber with a bench, a doorway that shuts, then a flat 38-tile arena. Shardback
+    // sleeps here. See game/boss/BossRoster.kt.
+    // ------------------------------------------------------------------------------------
+    private val geode = AreaDef(
+        id = "geode", name = "The Geode Court", subtitle = "Where the mountain keeps its heart",
+        biome = Biome.CRYSTAL, originX = 146, originY = 5, darkness = 0.25f,
+        rows = listOf(
+            "###########################################################",
+            "###########################################################",
+            "###################                                      ##",
+            "###################               L             L        ##",
+            "###################                                      ##",
+            "###################                                      ##",
+            "##              ###                                      ##",
+            "##         L    ###                                      ##",
+            "##              ###                                      ##",
+            "                                                         ##",
+            "                                                         ##",
+            "        B            *                                *  ##",
+            "###########################################################",
+            "###########################################################",
+            "###########################################################",
+            "###########################################################"
         )
     )
 }
