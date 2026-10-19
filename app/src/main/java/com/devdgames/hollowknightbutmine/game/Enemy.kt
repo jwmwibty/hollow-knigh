@@ -55,10 +55,11 @@ open class Enemy(
     var patrolTimer = 0f
     var isGrounded = false
 
-    // Combat state
+    // Combat state. `isStunned` is driven by a boss fight (see game/boss); ordinary enemies
+    // are never stunned, because the player's only attacks are the slash and the stab.
     var isStunned = false
+    /** Drives the stagger-star animation while [isStunned] is true. */
     var stunTimer = 0f
-    var isGrabbed = false
     var invincibilityTimer = 0f
     var flashTimer = 0f
 
@@ -132,8 +133,8 @@ open class Enemy(
     open fun takeDamage(damage: Int, knockbackX: Float = 0f, knockbackY: Float = 0f, playEffect: (() -> Unit)? = null) {
         if (!isAlive || invincibilityTimer > 0f) return
 
-        // Shielder blocks frontal attacks
-        if (type == EnemyType.SHIELDER && !isStunned && !isGrabbed) {
+        // Shielder blocks frontal attacks; the counter is to strike it from behind.
+        if (type == EnemyType.SHIELDER) {
             val attackFromFront = if (facing == Facing.RIGHT) knockbackX < 0 else knockbackX > 0
             if (attackFromFront && knockbackX != 0f) {
                 flashTimer = 0.08f
@@ -154,18 +155,7 @@ open class Enemy(
         if (hp <= 0) {
             hp = 0
             isAlive = false
-            isGrabbed = false
         }
-    }
-
-    open fun stun(duration: Float) {
-        // Bosses recover faster from stun
-        val actualDuration = if (isBoss) duration * 0.5f else duration
-        isStunned = true
-        stunTimer = actualDuration
-        vx = 0f
-        isAttacking = false
-        attackWindup = 0f
     }
 
     open fun update(dt: Float, playerX: Float, playerY: Float, platforms: List<RectF>) {
@@ -174,18 +164,8 @@ open class Enemy(
         if (invincibilityTimer > 0f) invincibilityTimer -= dt
         if (flashTimer > 0f) flashTimer -= dt
 
-        if (isGrabbed) return
-
-        if (isStunned) {
-            stunTimer -= dt
-            if (stunTimer <= 0f) {
-                isStunned = false
-            }
-            if (type != EnemyType.FLYER && type != EnemyType.BROODMOTHER) {
-                applyPhysics(dt, platforms)
-            }
-            return
-        }
+        // Stagger stars keep turning while a boss fight holds this enemy down.
+        if (isStunned && stunTimer > 0f) stunTimer -= dt
 
         when (type) {
             EnemyType.BROODMOTHER -> updateBroodmotherAI(dt, playerX, playerY)
@@ -316,9 +296,8 @@ open class Enemy(
     // =========================================================================
     // CHAPTER 3 BOSS: COLONNADE KNIGHT (Royal Lance Duelist)
     // Abilities:
-    // 1. Safety Pin Lance Thrust (extended piercing dash)
+    // 1. Lance Thrust (extended piercing dash)
     // 2. Phantom Teleport / Shadow Shift behind player
-    // 3. Parry Riposte Stance (counters player attacks)
     // =========================================================================
     private fun updateColonnadeKnightAI(dt: Float, playerX: Float, playerY: Float, platforms: List<RectF>) {
         val dx = playerX - x

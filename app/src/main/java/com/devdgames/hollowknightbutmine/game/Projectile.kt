@@ -7,7 +7,6 @@ import android.graphics.RectF
 
 /**
  * Projectile fired by Spitter enemies or hazards.
- * Can be parried by the player's safety pin to deflect it back!
  */
 class Projectile(
     var x: Float,
@@ -16,7 +15,6 @@ class Projectile(
     var vy: Float,
     val radius: Float = 6f,
     val damage: Int = 1,
-    var isReflected: Boolean = false,
     /** Outer glow and bright core of an enemy shot; the defaults are the spitter's acid orange. */
     val glowColor: Int = Color.rgb(255, 140, 20),
     val coreColor: Int = Color.rgb(255, 230, 80)
@@ -47,29 +45,14 @@ class Projectile(
     fun getBoundingBox(): RectF =
         RectF(x - radius, y - radius, x + radius, y + radius)
 
-    fun reflect(newVx: Float, newVy: Float) {
-        isReflected = true
-        vx = newVx
-        vy = newVy
-        life = 3.0f
-    }
-
     fun draw(canvas: Canvas, paint: Paint) {
         if (!isAlive) return
 
         paint.style = Paint.Style.FILL
-        if (isReflected) {
-            // Reflected glow (bright cyan / gold player energy)
-            paint.color = Color.rgb(100, 240, 255)
-            canvas.drawCircle(x, y, radius + 2f, paint)
-            paint.color = Color.WHITE
-            canvas.drawCircle(x, y, radius - 1f, paint)
-        } else {
-            // Toxic acid spit / orange infected blob
-            paint.color = glowColor
-            canvas.drawCircle(x, y, radius + 2f, paint)
-            paint.color = coreColor
-            canvas.drawCircle(x, y, radius - 1.5f, paint)
-        }
+        // Toxic acid spit / orange infected blob
+        paint.color = glowColor
+        canvas.drawCircle(x, y, radius + 2f, paint)
+        paint.color = coreColor
+        canvas.drawCircle(x, y, radius - 1.5f, paint)
     }
 }

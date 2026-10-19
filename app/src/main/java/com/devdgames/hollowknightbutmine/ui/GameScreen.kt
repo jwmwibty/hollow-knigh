@@ -183,7 +183,7 @@ fun CombatActionButtons(
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Top Row: Heal + Parry + Dash
+        // Top Row: Heal + Dash
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             // Heal / Focus (Hold to heal)
             ControlButton(
@@ -193,15 +193,6 @@ fun CombatActionButtons(
                 accentColor = Color(0xFF64B5F6),
                 onPressStart = { gameView?.world?.player?.startHeal() },
                 onPressEnd = { gameView?.world?.player?.stopHeal() }
-            )
-
-            // Parry (Shield with pin clasp)
-            ActionButton(
-                label = "parry",
-                subLabel = "PARRY",
-                size = 56.dp,
-                accentColor = Color(0xFFFFD54F),
-                onClick = { gameView?.world?.player?.startParry() }
             )
 
             // Dash
@@ -214,7 +205,7 @@ fun CombatActionButtons(
             )
         }
 
-        // Bottom Row: Jump + Stab + Grab / Headbutt
+        // Bottom Row: Jump + Light attack (slash) + Stab
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             // Jump
             ActionButton(
@@ -225,22 +216,22 @@ fun CombatActionButtons(
                 onClick = { gameView?.world?.player?.jump() }
             )
 
-            // Stab (Safety Pin Thrust)
+            // Light attack: the quick sword slash. This is the primary attack button.
+            ActionButton(
+                label = "slash",
+                subLabel = "SLASH",
+                size = 68.dp,
+                accentColor = Color(0xFFE0E0E0),
+                onClick = { gameView?.world?.player?.slash() }
+            )
+
+            // Stab: the committed forward thrust with the point.
             ActionButton(
                 label = "stab",
                 subLabel = "STAB",
-                size = 68.dp,
-                accentColor = Color(0xFFE0E0E0),
+                size = 64.dp,
+                accentColor = Color(0xFFFFD54F),
                 onClick = { gameView?.world?.player?.stab() }
-            )
-
-            // Grab pulls enemies in, then the player headbutts automatically.
-            ActionButton(
-                label = "grab",
-                subLabel = "GRAB",
-                size = 68.dp,
-                accentColor = Color(0xFFFFAB91),
-                onClick = { gameView?.world?.player?.grab() }
             )
         }
     }
@@ -373,11 +364,27 @@ private fun ControlGlyph(name: String, tint: Color, modifier: Modifier = Modifie
                 line(w * .82f, h * .12f, w * .82f, h * .28f, w * .07f)
                 line(w * .74f, h * .20f, w * .90f, h * .20f, w * .07f)
             }
-            "parry" -> {
-                path(listOf(.5f to .08f, .84f to .22f, .78f to .61f, .5f to .88f, .22f to .61f, .16f to .22f), close = true)
-                line(w * .5f, h * .25f, w * .5f, h * .68f, w * .08f)
-                line(w * .36f, h * .47f, w * .5f, h * .60f, w * .08f)
-                line(w * .5f, h * .60f, w * .65f, h * .40f, w * .08f)
+            "slash" -> {
+                // A sword held diagonally plus the arc it sweeps.
+                line(w * .24f, h * .76f, w * .74f, h * .24f, w * .11f)
+                line(w * .31f, h * .60f, w * .47f, h * .77f, w * .09f)
+                line(w * .14f, h * .86f, w * .25f, h * .75f, w * .09f)
+                drawArc(
+                    color = tint,
+                    startAngle = 205f,
+                    sweepAngle = 120f,
+                    useCenter = false,
+                    topLeft = androidx.compose.ui.geometry.Offset(w * .30f, h * .16f),
+                    size = androidx.compose.ui.geometry.Size(w * .58f, h * .58f),
+                    style = s
+                )
+            }
+            "stab" -> {
+                // The same sword held level with the point forward.
+                line(w * .26f, h * .48f, w * .88f, h * .48f, w * .11f)
+                line(w * .32f, h * .32f, w * .32f, h * .64f, w * .09f)
+                line(w * .12f, h * .48f, w * .27f, h * .48f, w * .09f)
+                line(w * .56f, h * .74f, w * .86f, h * .74f, w * .06f)
             }
             "dash" -> {
                 line(w * .08f, h * .30f, w * .56f, h * .30f, w * .09f)
@@ -391,18 +398,7 @@ private fun ControlGlyph(name: String, tint: Color, modifier: Modifier = Modifie
                 line(w * .50f, h * .22f, w * .50f, h * .78f, w * .11f)
                 line(w * .22f, h * .82f, w * .78f, h * .82f, w * .08f)
             }
-            "stab" -> {
-                // Needle body and clasp ring, a recognizable safety-pin silhouette.
-                path(listOf(.20f to .78f, .76f to .20f, .86f to .29f, .36f to .84f))
-                drawCircle(tint, radius = w * .105f, center = androidx.compose.ui.geometry.Offset(w * .20f, h * .78f), style = s)
-                path(listOf(.67f to .18f, .79f to .08f, .91f to .17f, .83f to .30f))
-                line(w * .70f, h * .33f, w * .83f, h * .45f, w * .07f)
-            }
-            "grab" -> {
-                // Hook reaching forward and curling back.
-                path(listOf(.18f to .18f, .18f to .77f, .48f to .77f, .48f to .62f, .37f to .62f, .37f to .43f, .66f to .43f, .66f to .58f, .83f to .58f, .83f to .34f))
-                line(w * .58f, h * .24f, w * .83f, h * .34f, w * .10f)
-            }
+
             "left" -> path(listOf(.68f to .15f, .28f to .50f, .68f to .85f), close = false)
             "right" -> path(listOf(.32f to .15f, .72f to .50f, .32f to .85f), close = false)
             else -> drawCircle(tint, radius = w * .25f)
