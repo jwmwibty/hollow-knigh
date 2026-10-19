@@ -5,19 +5,24 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import com.devdgames.hollowknightbutmine.game.combat.AttackPhase
+import com.devdgames.hollowknightbutmine.game.combat.CombatMove
+import com.devdgames.hollowknightbutmine.game.combat.MoveSpec
+import com.devdgames.hollowknightbutmine.game.combat.PlayerCombat
 import kotlin.math.abs
 import kotlin.math.sin
 
 /**
- * Player Controller wielding the Safety Pin!
+ * Player Controller wielding a sword.
  * Abilities:
  * - Movement: Run, Jump, Dash (invincible i-frames)
- * - Safety Pin Combat:
- *    * Stab: Fast basic thrust with the needle point.
- *    * Grab: Hook an enemy with the safety pin clasp and latch on.
- *    * Headbutt: Smash grabbed enemy with your hard shell mask for heavy bonus damage.
- *    * Parry: Timed block with the pin's clasp; negates hit & stuns the enemy!
+ * - Sword Combat — two attacks and nothing else:
+ *    * Light attack: a quick slash that sweeps a wide, short arc.
+ *    * Stab: a committed forward thrust with the point.
  * - Heal: Focus soul / thread to restore 1 mask.
+ *
+ * The timing, damage and hitbox windows of both attacks live in [PlayerCombat], which is pure
+ * Kotlin and unit-tested; this class only turns that model into movement, hitboxes and art.
  */
 class Player(
     var x: Float,
@@ -54,10 +59,18 @@ class Player(
     var invincibilityTimer = 0f
     var flashTimer = 0f
 
-    // Pin Combat mechanics
+    // Sword combat: the whole move set and its timings.
+    val combat = PlayerCombat()
     var activeHitbox: AttackHitbox? = null
-    var grabbedEnemy: Enemy? = null
-    var parrySuccess = false
+
+    // Restrained impact feedback where the blade connected.
+    private var impactTimer = 0f
+    private var impactX = 0f
+    private var impactY = 0f
+
+    // Cached drawing objects: the sword is rebuilt every frame but never re-allocated.
+    private val bladePath = Path()
+    private val arcRect = RectF()
 
     // Healing mechanics
     var healCharge = 0f
@@ -79,37 +92,43 @@ class Player(
 
     fun jump() {
         if (state == PlayerState.DEAD) return
-        if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING ||
-            state == PlayerState.GRABBING || state == PlayerState.HOLDING_ENEMY) return
 
-        if (isGrounded) {
-            vy = jumpSpeed
-            isGrounded = false
-            airJumpsUsed = 0
-            state = PlayerState.JUMPING
-            jumpBurstTimer = 0.16f
-            landingTimer = 0f
-        } else if (airJumpsUsed < maxAirJumps &&
-            state != PlayerState.DASHING && state != PlayerState.HEADBUTTING) {
-            // Second press in mid-air: punchy double jump with a fresh upward impulse.
-            airJumpsUsed++
-            // Stronger upward impulse makes the second jump feel like a real mid-air kick.
-            vy = jumpSpeed * 1.02f
-            state = PlayerState.JUMPING
-            stateTimer = 0.12f
-            doubleJumpBurstTimer = 0.24f
-            landingTimer = 0f
-        } else {
-            return
+        val launched = when {
+            isGrounded -> {
+                vy = jumpSpeed
+                isGrounded = false
+                airJumpsUsed = 0
+                jumpBurstTimer = 0.16f
+                landingTimer = 0f
+                true
+            }
+            airJumpsUsed < maxAirJumps && state != PlayerState.DASHING -> {
+                // Second press in mid-air: punchy double jump with a fresh upward impulse.
+                airJumpsUsed++
+                // Stronger upward impulse makes the second jump feel like a real mid-air kick.
+                vy = jumpSpeed * 1.02f
+                stateTimer = 0.12f
+                doubleJumpBurstTimer = 0.24f
+                landingTimer = 0f
+                true
+            }
+            else -> false
         }
+        if (!launched) return
+
+        // A jump interrupts a swing instead of leaving it frozen mid-arc.
+        combat.cancel()
+        activeHitbox = null
+        state = PlayerState.JUMPING
     }
 
     fun dash() {
         if (state == PlayerState.DEAD) return
         if (dashCooldown > 0f) return
         if (!isGrounded && !canDashInAir) return
-        if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
 
+        combat.cancel()
+        activeHitbox = null
         state = PlayerState.DASHING
         stateTimer = 0.28f // Slightly longer, punchier dash
         dashBurstTimer = 0.22f
@@ -123,69 +142,53 @@ class Player(
     }
 
     /**
-     * Safety Pin Quick Stab (Basic Attack)
+     * Light attack: a quick sword slash that sweeps a wide, short arc.
+     */
+    fun slash() {
+        beginAttack(CombatMove.SLASH)
+    }
+
+    /**
+     * The other core move: a committed forward thrust with the point of the sword.
      */
     fun stab() {
-        if (state == PlayerState.DEAD) return
-        if (state == PlayerState.DASHING || state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
-        state = PlayerState.STABBING
-        stateTimer = 0.22f
+        beginAttack(CombatMove.THRUST)
+    }
 
-        val reach = 72f
+    /**
+     * Starts [move] through [combat]. The request is ignored while the player is dead, dashing
+     * or in the middle of a swing's wind-up/strike; the short recovery tail can be cancelled
+     * into the next attack, so mashing the button never feels locked out.
+     */
+    private fun beginAttack(move: CombatMove) {
+        if (state == PlayerState.DEAD || state == PlayerState.DASHING) return
+        if (!combat.begin(move)) return
+
+        // Swinging breaks focus rather than healing and attacking at the same time.
+        if (state == PlayerState.HEALING) {
+            healHeld = false
+            healCharge = 0f
+        }
+        activeHitbox = null
+        state = if (move == CombatMove.SLASH) PlayerState.SLASHING else PlayerState.STABBING
+        stateTimer = combat.currentSpec?.duration ?: 0f
+    }
+
+    /**
+     * Builds the live blade hitbox from the attack's spec. It exists only during the ACTIVE
+     * window, so the damage window and the drawn blade can never visibly disagree.
+     */
+    private fun buildHitbox(spec: MoveSpec): AttackHitbox {
+        val reach = spec.reach
         val attackX = if (facing == Facing.RIGHT) x + 10f else x - 10f - reach
-        val attackBox = RectF(attackX, y - height * 0.75f, attackX + reach, y - height * 0.2f)
-        val knockDir = if (facing == Facing.RIGHT) 160f else -160f
-        activeHitbox = AttackHitbox(rect = attackBox, damage = 18, isGrab = false, knockbackX = knockDir, knockbackY = -80f)
-    }
-
-    /**
-     * Safety Pin Grab (Hooking enemy with the clasp)
-     */
-    fun grab(enemies: List<Enemy> = emptyList()) {
-        if (state == PlayerState.DEAD) return
-        // While an enemy is being pulled in, don't restart the grab or require another press.
-        if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
-        if (state == PlayerState.DASHING) return
-
-        state = PlayerState.GRABBING
-        stateTimer = 0.25f
-
-        val reach = 150f // Long-range hook so the grab has a useful pull distance.
-        val attackX = if (facing == Facing.RIGHT) x + 10f else x - 10f - reach
-        val attackBox = RectF(attackX, y - height * 0.75f, attackX + reach, y - height * 0.2f)
-        activeHitbox = AttackHitbox(rect = attackBox, damage = 5, isGrab = true)
-    }
-
-    /**
-     * Headbutt: Smash grabbed enemy with hard round mask for massive damage!
-     */
-    private fun executeHeadbutt() {
-        val target = grabbedEnemy ?: return
-        state = PlayerState.HEADBUTTING
-        stateTimer = 0.3f
-
-        // Headbutt deals high damage, bosses take balanced damage
-        val damage = if (target.isBoss) 25 else 48
-        val knockDir = if (facing == Facing.RIGHT) 360f else -360f
-        target.isGrabbed = false
-        target.takeDamage(damage, knockbackX = knockDir, knockbackY = -180f)
-        target.stun(0.85f)
-
-        // Player gains soul from headbutt combo
-        soul = (soul + 25).coerceAtMost(maxSoul)
-
-        grabbedEnemy = null
-    }
-
-    /**
-     * Safety Pin Parry: Block incoming enemy hits with the pin's clasp
-     */
-    fun startParry() {
-        if (state == PlayerState.DEAD) return
-        if (state == PlayerState.HOLDING_ENEMY || state == PlayerState.HEADBUTTING) return
-        state = PlayerState.PARRYING
-        stateTimer = 0.72f // More forgiving parry window
-        parrySuccess = false
+        val box = RectF(
+            attackX,
+            y - height * spec.boxTopFraction,
+            attackX + reach,
+            y - height * spec.boxBottomFraction
+        )
+        val knockDir = if (facing == Facing.RIGHT) spec.knockbackX else -spec.knockbackX
+        return AttackHitbox(box, spec.damage, knockDir, spec.knockbackY)
     }
 
     /**
@@ -194,7 +197,7 @@ class Player(
     fun startHeal() {
         // Focus is a held channel: every full second spends 33 Soul for one mask.
         if (state != PlayerState.DEAD && soul >= 33 && currentMasks < maxMasks &&
-            isGrounded && state != PlayerState.HOLDING_ENEMY && state != PlayerState.HEADBUTTING) {
+            isGrounded && state != PlayerState.DASHING) {
             healHeld = true
             if (state != PlayerState.HEALING) {
                 state = PlayerState.HEALING
@@ -215,14 +218,6 @@ class Player(
     fun takeDamage(amount: Int = 1) {
         if (invincibilityTimer > 0f) return
 
-        if (state == PlayerState.PARRYING) {
-            // Successful PARRY!
-            parrySuccess = true
-            invincibilityTimer = 0.4f
-            soul = (soul + 20).coerceAtMost(maxSoul)
-            return
-        }
-
         currentMasks = (currentMasks - amount).coerceAtLeast(0)
         healHeld = false
         invincibilityTimer = 1.0f
@@ -233,19 +228,19 @@ class Player(
         val knockDir = if (facing == Facing.RIGHT) -180f else 180f
         vx = knockDir
 
-        // If holding enemy, release on hit
-        grabbedEnemy?.isGrabbed = false
-        grabbedEnemy = null
+        // Being hit interrupts a swing; the blade stops hurting immediately.
+        combat.cancel()
+        activeHitbox = null
     }
 
     fun update(
         dt: Float,
         inputX: Float,
         platforms: List<RectF>,
-        enemies: List<Enemy>,
-        onParryTriggered: (() -> Unit)? = null
+        enemies: List<Enemy>
     ) {
         animationTime += dt
+        if (impactTimer > 0f) impactTimer = (impactTimer - dt).coerceAtLeast(0f)
         if (landingTimer > 0f) landingTimer = (landingTimer - dt).coerceAtLeast(0f)
         if (jumpBurstTimer > 0f) jumpBurstTimer = (jumpBurstTimer - dt).coerceAtLeast(0f)
         if (dashBurstTimer > 0f) dashBurstTimer = (dashBurstTimer - dt).coerceAtLeast(0f)
@@ -261,8 +256,7 @@ class Player(
                 vx = 0f
                 vy = 0f
                 activeHitbox = null
-                grabbedEnemy?.isGrabbed = false
-                grabbedEnemy = null
+                combat.cancel()
             }
             PlayerState.DASHING -> {
                 stateTimer -= dt
@@ -271,71 +265,8 @@ class Player(
                     vx = 0f
                 }
             }
-            PlayerState.STABBING -> {
-                stateTimer -= dt
-                checkCombatCollisions(enemies)
-
-                // Update horizontal movement according to current input
-                if (inputX != 0f) {
-                    facing = if (inputX > 0) Facing.RIGHT else Facing.LEFT
-                    vx = inputX * moveSpeed * 0.75f // Controlled mobile attack
-                } else {
-                    vx = 0f
-                }
-
-                if (stateTimer <= 0f) {
-                    activeHitbox = null
-                    state = if (isGrounded) PlayerState.IDLE else PlayerState.FALLING
-                }
-            }
-            PlayerState.GRABBING -> {
-                stateTimer -= dt
-                checkCombatCollisions(enemies)
-
-                if (inputX != 0f) {
-                    facing = if (inputX > 0) Facing.RIGHT else Facing.LEFT
-                    vx = inputX * moveSpeed * 0.65f
-                } else {
-                    vx = 0f
-                }
-
-                if (stateTimer <= 0f && state == PlayerState.GRABBING) {
-                    activeHitbox = null
-                    state = if (isGrounded) PlayerState.IDLE else PlayerState.FALLING
-                }
-            }
-            PlayerState.HOLDING_ENEMY -> {
-                val target = grabbedEnemy
-                if (target == null || !target.isAlive) {
-                    grabbedEnemy = null
-                    state = PlayerState.IDLE
-                } else {
-                    val pinOffset = if (facing == Facing.RIGHT) 42f else -42f
-                    target.x = x + pinOffset
-                    target.y = y - 5f
-                    target.vx = 0f
-                    target.vy = 0f
-
-                    // The enemy is pulled into range; headbutt automatically, no second button press.
-                    stateTimer -= dt
-                    if (stateTimer <= 0f && grabbedEnemy === target) {
-                        executeHeadbutt()
-                    }
-                }
-            }
-            PlayerState.HEADBUTTING -> {
-                stateTimer -= dt
-                if (stateTimer <= 0f) {
-                    state = if (isGrounded) PlayerState.IDLE else PlayerState.FALLING
-                }
-            }
-            PlayerState.PARRYING -> {
-                stateTimer -= dt
-                vx = 0f // Locked during parry stand
-                checkParryCollision(enemies, onParryTriggered)
-                if (stateTimer <= 0f) {
-                    state = if (isGrounded) PlayerState.IDLE else PlayerState.FALLING
-                }
+            PlayerState.SLASHING, PlayerState.STABBING -> {
+                tickAttack(dt, inputX, enemies)
             }
             PlayerState.HEALING -> {
                 healCharge += dt
@@ -396,11 +327,11 @@ class Player(
             airJumpsUsed = 0
         }
 
-        // Touch damage from active enemy if not parrying/invincible
-        if (invincibilityTimer <= 0f && state != PlayerState.PARRYING && state != PlayerState.DEAD) {
+        // Touch damage from an active enemy, unless the player is invincible or dead.
+        if (invincibilityTimer <= 0f && state != PlayerState.DEAD) {
             val playerBox = getBoundingBox()
             for (enemy in enemies) {
-                if (enemy.isAlive && !enemy.isGrabbed && !enemy.isStunned) {
+                if (enemy.isAlive && !enemy.isStunned) {
                     if (enemy.hurtsPlayer(playerBox)) {
                         takeDamage(enemy.touchDamage)
                         break
@@ -410,50 +341,59 @@ class Player(
         }
     }
 
-    private fun checkCombatCollisions(enemies: List<Enemy>) {
-        val attack = activeHitbox ?: return
-        for (enemy in enemies) {
-            if (enemy.isAlive && !enemy.isGrabbed) {
-                if (RectF.intersects(attack.rect, enemy.getBoundingBox())) {
-                    if (attack.isGrab) {
-                        enemy.isGrabbed = true
-                        enemy.takeDamage(attack.damage)
-                        grabbedEnemy = enemy
-                        state = PlayerState.HOLDING_ENEMY
-                        stateTimer = 0.20f // Brief pull-in beat, then automatically headbutt.
-                        activeHitbox = null
-                        break
-                    } else {
-                        enemy.takeDamage(attack.damage, attack.knockbackX, attack.knockbackY)
-                        soul = (soul + 11).coerceAtMost(maxSoul)
-                        activeHitbox = null
-                        break
-                    }
-                }
-            }
+    /**
+     * Advances the attack in progress. The model owns the timeline; this only keeps the body,
+     * the state and the live hitbox in step with it, so the drawn blade and the damage window
+     * always agree.
+     */
+    private fun tickAttack(dt: Float, inputX: Float, enemies: List<Enemy>) {
+        combat.update(dt)
+        stateTimer = (combat.currentSpec?.duration ?: 0f) - combat.elapsed
+
+        val spec = combat.currentSpec
+        if (spec == null || combat.phase == AttackPhase.IDLE) {
+            // The swing finished (or was cancelled): drop the blade and return to neutral.
+            activeHitbox = null
+            state = if (isGrounded) PlayerState.IDLE else PlayerState.FALLING
+            return
+        }
+
+        // Controlled travel while the swing plays out: the attack never roots the player.
+        if (inputX != 0f) {
+            facing = if (inputX > 0) Facing.RIGHT else Facing.LEFT
+            vx = inputX * moveSpeed * spec.travelScale
+        } else {
+            vx = 0f
+        }
+
+        // The blade only exists while it is actually travelling, and hits at most once.
+        if (combat.isActive && !combat.connected) {
+            if (activeHitbox == null) activeHitbox = buildHitbox(spec)
+            checkCombatCollisions(enemies)
+        } else {
+            activeHitbox = null
         }
     }
 
-    private fun checkParryCollision(enemies: List<Enemy>, onParryTriggered: (() -> Unit)?) {
-        val parryBox = RectF(
-            if (facing == Facing.RIGHT) x else x - 55f,
-            y - height,
-            if (facing == Facing.RIGHT) x + 55f else x,
-            y
-        )
+    private fun checkCombatCollisions(enemies: List<Enemy>) {
+        val attack = activeHitbox ?: return
         for (enemy in enemies) {
-            if (enemy.isAlive && RectF.intersects(parryBox, enemy.getBoundingBox())) {
-                if (enemy.isAttacking || abs(enemy.vx) > 40f) {
-                    enemy.stun(1.8f)
-                    val knockDir = if (facing == Facing.RIGHT) 280f else -280f
-                    enemy.vx = knockDir
-                    parrySuccess = true
-                    invincibilityTimer = 0.5f
-                    soul = (soul + 25).coerceAtMost(maxSoul)
-                    onParryTriggered?.invoke()
-                    break
-                }
+            if (!enemy.isAlive) continue
+            if (!RectF.intersects(attack.rect, enemy.getBoundingBox())) continue
+
+            val before = enemy.hp
+            enemy.takeDamage(attack.damage, attack.knockbackX, attack.knockbackY)
+            combat.onHit()
+            activeHitbox = null
+            // Soul only for a blow that actually landed, and a small spark where it connected.
+            if (enemy.hp < before) {
+                val spec = combat.currentSpec ?: return
+                soul = (soul + spec.soulGain).coerceAtMost(maxSoul)
+                impactTimer = 0.12f
+                impactX = attack.rect.centerX()
+                impactY = enemy.y - enemy.height * 0.55f
             }
+            break
         }
     }
 
@@ -503,7 +443,7 @@ class Player(
      * - High folded yellow scarf/cowl wrapped around neck
      * - Tattered, jagged yellow cloak trailing behind
      * - Dark charcoal ninja tunic, trousers, and strapped leather boots
-     * - Giant bronze/brass safety pin polearm/greatsword
+     * - A steel sword with a brass crossguard, held in the near hand
      */
     fun draw(canvas: Canvas, paint: Paint) {
         val dir = if (facing == Facing.RIGHT) 1f else -1f
@@ -518,8 +458,8 @@ class Player(
         // 3. Dark Charcoal Tunic / Torso with diagonal belt harness
         drawTorso(canvas, paint, dir, isFlashing)
 
-        // 4. Giant Brass/Bronze Safety Pin Weapon
-        drawGiantSafetyPin(canvas, paint, dir)
+        // 4. Sword (grip, crossguard, blade) and its swing arc
+        drawSword(canvas, paint, dir)
 
         // 5. Folded Yellow Scarf / Cowl around neck
         drawScarf(canvas, paint, dir, isFlashing)
@@ -527,7 +467,7 @@ class Player(
         // 6. Round Ivory Skull / Head & Void Eyes
         drawRoundHead(canvas, paint, dir, isFlashing)
 
-        // 7. Special Combat FX (parry sparks, heal aura, dash trail)
+        // 7. Special Combat FX (impact sparks, heal aura, dash trail)
         drawSpecialEffects(canvas, paint)
     }
 
@@ -652,8 +592,8 @@ class Player(
     }
 
     private fun drawRoundHead(canvas: Canvas, paint: Paint, dir: Float, isFlashing: Boolean) {
-        // Head moves forward slightly during Headbutt attack
-        val headOffsetX = dir * (if (state == PlayerState.HEADBUTTING) 16f else 0f)
+        // The head leans into the swing while the blade is actually travelling.
+        val headOffsetX = dir * (if (combat.isActive) 3.5f else 0f)
         val runBob = if (state == PlayerState.RUNNING) abs(sin(animationTime * 17f)) * 2.5f else 0f
         val jumpTilt = when {
             state == PlayerState.JUMPING && doubleJumpBurstTimer > 0f -> -7f
@@ -709,139 +649,161 @@ class Player(
     }
 
     /**
-     * Draws the Giant Safety Pin (Polearm / Greatsword sized):
-     * - Coiled circular spring at back
-     * - Bronze/brass weathered metal body
-     * - Sharp needle tip & openable clasp
+     * The player's sword: a short wrapped grip with a brass pommel, a crossguard, and a
+     * straight double-edged pale-steel blade that tapers to a point.
+     *
+     * Every pose is one angle plus one extension around the hand, so the same drawing code
+     * serves the held pose, the slash arc and the thrust. The frame is mirrored for facing,
+     * and the blade is built into a cached [Path]: nothing is allocated per frame.
      */
-    private fun drawGiantSafetyPin(canvas: Canvas, paint: Paint, dir: Float) {
-        val pinOriginX = x + dir * 6f
-        val pinOriginY = y - height * 0.5f
+    private fun drawSword(canvas: Canvas, paint: Paint, dir: Float) {
+        val handX = x + dir * 9f
+        val handY = y - height * 0.46f
 
-        paint.strokeCap = Paint.Cap.ROUND
+        val ready = -30f
+        var angle: Float
+        var extend = 0f
+        var arcFrom = 0f
+        var arcSweep = 0f
 
         when (state) {
+            PlayerState.SLASHING -> {
+                when (combat.phase) {
+                    AttackPhase.WINDUP -> {
+                        // Anticipation: the blade is lifted back over the shoulder.
+                        val t = smooth(combat.phaseProgress)
+                        angle = lerp(ready, SLASH_START, t)
+                        extend = -3f * t
+                    }
+                    AttackPhase.ACTIVE -> {
+                        // The strike: one fast sweep down and through, trailing its own arc.
+                        val t = easeOut(combat.phaseProgress)
+                        angle = lerp(SLASH_START, SLASH_END, t)
+                        arcFrom = SLASH_START
+                        arcSweep = angle - SLASH_START
+                    }
+                    else -> {
+                        // Short recovery back to the ready pose.
+                        angle = lerp(SLASH_END, ready, smooth(combat.phaseProgress))
+                    }
+                }
+            }
             PlayerState.STABBING -> {
-                // Three-beat thrust: draw back, snap forward, then recoil.
-                val progress = (1f - stateTimer / 0.22f).coerceIn(0f, 1f)
-                val thrust = when {
-                    progress < 0.22f -> -10f * (progress / 0.22f)
-                    progress < 0.58f -> -10f + 78f * ((progress - 0.22f) / 0.36f)
-                    else -> 68f * (1f - (progress - 0.58f) / 0.42f)
+                when (combat.phase) {
+                    AttackPhase.WINDUP -> {
+                        // Align the point at the target and draw the sword back.
+                        val t = smooth(combat.phaseProgress)
+                        angle = lerp(ready, THRUST_ANGLE, t)
+                        extend = -11f * t
+                    }
+                    AttackPhase.ACTIVE -> {
+                        // Drive the point straight forward.
+                        angle = THRUST_ANGLE
+                        extend = lerp(-11f, 21f, easeOut(combat.phaseProgress))
+                    }
+                    else -> {
+                        val t = smooth(combat.phaseProgress)
+                        angle = lerp(THRUST_ANGLE, ready, t)
+                        extend = lerp(21f, 0f, t)
+                    }
                 }
-                val tipX = pinOriginX + dir * (26f + thrust)
-                val tipY = pinOriginY - 2f
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 5f
-                paint.color = Color.rgb(205, 160, 90)
-                canvas.drawLine(pinOriginX - dir * 14f, pinOriginY + 3f, tipX, tipY, paint)
-                paint.style = Paint.Style.FILL
-                paint.color = Color.rgb(160, 120, 60)
-                canvas.drawRoundRect(pinOriginX - dir * 22f, pinOriginY - 5f, pinOriginX - dir * 10f, pinOriginY + 11f, 4f, 4f, paint)
-                // Brief impact glint only near the end of the thrust.
-                if (progress in 0.42f..0.66f) {
-                    paint.style = Paint.Style.STROKE
-                    paint.color = Color.rgb(255, 235, 175)
-                    paint.strokeWidth = 2.5f
-                    canvas.drawLine(tipX, tipY - 7f, tipX + dir * 9f, tipY + 7f, paint)
-                    canvas.drawLine(tipX + dir * 2f, tipY - 9f, tipX + dir * 2f, tipY + 9f, paint)
-                }
-            }
-            PlayerState.GRABBING, PlayerState.HOLDING_ENEMY -> {
-                // The hook reaches out in a quick arc instead of popping into place.
-                val progress = if (state == PlayerState.GRABBING)
-                    (1f - stateTimer / 0.25f).coerceIn(0f, 1f) else 1f
-                val reach = if (state == PlayerState.HOLDING_ENEMY) 50f else 18f + 38f * (1f - (1f - progress) * (1f - progress))
-                val lift = if (state == PlayerState.HOLDING_ENEMY) 0f else sin(progress * 3.1415927f) * 7f
-                val tipX = pinOriginX + dir * reach
-                val hook = Path()
-                hook.moveTo(pinOriginX - dir * 10f, pinOriginY + 4f)
-                hook.quadTo(pinOriginX + dir * (reach * 0.55f), pinOriginY - 15f - lift, tipX, pinOriginY + 9f)
-                hook.quadTo(tipX - dir * 13f, pinOriginY + 22f, tipX - dir * 20f, pinOriginY + 12f)
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 5f
-                paint.color = Color.rgb(215, 175, 100)
-                canvas.drawPath(hook, paint)
-                // A small warm glint sells the clasp snapping shut on contact.
-                if (state == PlayerState.HOLDING_ENEMY) {
-                    paint.strokeWidth = 2f
-                    paint.color = Color.rgb(255, 225, 150)
-                    canvas.drawLine(tipX - dir * 4f, pinOriginY + 3f, tipX + dir * 4f, pinOriginY + 11f, paint)
-                }
-                paint.style = Paint.Style.FILL
-                paint.color = Color.rgb(150, 110, 55)
-                canvas.drawCircle(pinOriginX - dir * 12f, pinOriginY, 8f, paint)
-            }
-            PlayerState.PARRYING -> {
-                // Pin held upright defensively as giant guard
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 6.5f
-                paint.color = if (parrySuccess) Color.rgb(255, 235, 90) else Color.rgb(210, 170, 95)
-
-                val guardX = pinOriginX + dir * 18f
-                canvas.drawLine(guardX, pinOriginY - 32f, guardX, pinOriginY + 28f, paint)
-
-                // Large clasp housing
-                paint.style = Paint.Style.FILL
-                paint.color = Color.rgb(170, 125, 65)
-                canvas.drawRoundRect(guardX - 6f, pinOriginY + 16f, guardX + 6f, pinOriginY + 34f, 4f, 4f, paint)
-                // Coil ring at top
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 4f
-                canvas.drawCircle(guardX, pinOriginY - 32f, 7f, paint)
             }
             else -> {
-                // Idle / running: a compact Hollow-Knight-style nail, not a long staff.
-                // The blade sits low in the hand with a slight hooked tip and restrained metal glint.
-                val gripX = pinOriginX + dir * 8f
-                val gripY = pinOriginY + 9f
-                val guardX = gripX + dir * 5f
-                val guardY = gripY - 1f
-                val tipX = gripX + dir * 34f
-                val tipY = gripY - 13f
-
-                // Dark wrapped handle.
-                paint.style = Paint.Style.STROKE
-                paint.strokeCap = Paint.Cap.ROUND
-                paint.strokeWidth = 5f
-                paint.color = Color.rgb(48, 43, 37)
-                canvas.drawLine(gripX - dir * 9f, gripY + 5f, gripX + dir * 3f, gripY, paint)
-
-                // Small brass crossguard.
-                paint.strokeWidth = 3.2f
-                paint.color = Color.rgb(173, 133, 69)
-                canvas.drawLine(guardX - dir * 5f, guardY + 6f, guardX + dir * 5f, guardY - 4f, paint)
-
-                // Tapered pale-steel nail blade, with a gentle hooked curve.
-                val blade = Path()
-                blade.moveTo(guardX, guardY - 1f)
-                blade.quadTo(gripX + dir * 20f, gripY - 12f, tipX, tipY)
-                blade.quadTo(tipX - dir * 4f, tipY + 8f, tipX - dir * 10f, tipY + 8f)
-                paint.strokeWidth = 4.2f
-                paint.color = Color.rgb(166, 184, 174)
-                canvas.drawPath(blade, paint)
-                paint.strokeWidth = 1.35f
-                paint.color = Color.rgb(230, 239, 219)
-                canvas.drawLine(guardX + dir * 2f, guardY - 3f, tipX - dir * 3f, tipY + 1f, paint)
-
-                // Tiny pommel, kept close to the hand so the silhouette reads as a nail.
-                paint.style = Paint.Style.FILL
-                paint.color = Color.rgb(196, 151, 78)
-                canvas.drawCircle(gripX - dir * 10f, gripY + 5f, 3f, paint)
+                // Held pose: low and ready, with a little life in it.
+                val tilt = when (state) {
+                    PlayerState.RUNNING -> sin(animationTime * 17f) * 5f
+                    PlayerState.JUMPING -> -7f
+                    PlayerState.FALLING -> 7f
+                    PlayerState.DASHING -> 20f   // the blade streams back behind the dash
+                    PlayerState.HEALING -> -52f  // held up out of the way while focusing
+                    else -> sin(animationTime * 2.6f) * 2.5f
+                }
+                angle = ready + tilt
             }
         }
+
+        canvas.save()
+        canvas.translate(handX, handY)
+        canvas.scale(dir, 1f)
+
+        // Restrained motion trail, drawn only while the blade is actually sweeping.
+        if (arcSweep != 0f) {
+            arcRect.set(-ARC_RADIUS, -ARC_RADIUS, ARC_RADIUS, ARC_RADIUS)
+            paint.style = Paint.Style.STROKE
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeWidth = 5.5f
+            paint.color = Color.argb(115, 224, 238, 246)
+            canvas.drawArc(arcRect, arcFrom, arcSweep, false, paint)
+        }
+
+        canvas.rotate(angle)
+        canvas.translate(extend, 0f)
+
+        // Wrapped grip.
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.BUTT
+        paint.strokeWidth = 5.5f
+        paint.color = Color.rgb(46, 40, 36)
+        canvas.drawLine(-14f, 0f, 3f, 0f, paint)
+
+        // Pommel.
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(196, 151, 78)
+        canvas.drawCircle(-15.5f, 0f, 3.6f, paint)
+
+        // Crossguard: the bar that makes the silhouette read as a sword at gameplay scale.
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = 4.2f
+        paint.color = Color.rgb(178, 138, 72)
+        canvas.drawLine(5f, -9.5f, 5f, 9.5f, paint)
+
+        // Straight double-edged blade tapering to a point.
+        bladePath.reset()
+        bladePath.moveTo(7f, -4.1f)
+        bladePath.lineTo(36f, -3f)
+        bladePath.lineTo(49f, 0f)
+        bladePath.lineTo(36f, 3f)
+        bladePath.lineTo(7f, 4.1f)
+        bladePath.close()
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(176, 190, 198)
+        canvas.drawPath(bladePath, paint)
+
+        // Lit edge and fuller groove, so the blade has a spine instead of reading as a stick.
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = 1.4f
+        paint.color = Color.rgb(238, 245, 248)
+        canvas.drawLine(10f, -2.3f, 45f, -0.4f, paint)
+        paint.strokeWidth = 1f
+        paint.color = Color.rgb(122, 136, 148)
+        canvas.drawLine(11f, 1.6f, 40f, 0.7f, paint)
+
+        canvas.restore()
     }
+
+    private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+    /** Smooth in-and-out, used for anticipation and recovery. */
+    private fun smooth(t: Float): Float = t * t * (3f - 2f * t)
+
+    /** Fast out of the gate, used for the strike itself. */
+    private fun easeOut(t: Float): Float = 1f - (1f - t) * (1f - t)
 
     private fun drawSpecialEffects(canvas: Canvas, paint: Paint) {
         paint.style = Paint.Style.STROKE
 
-        // Parry golden flash spark
-        if (state == PlayerState.PARRYING && parrySuccess) {
-            paint.color = Color.rgb(255, 235, 80)
-            paint.strokeWidth = 4f
-            val px = if (facing == Facing.RIGHT) x + 30f else x - 30f
-            canvas.drawCircle(px, y - height / 2, 22f, paint)
-            canvas.drawCircle(px, y - height / 2, 34f, paint)
+        // Impact spark where the blade connected: two short flecks, gone in a few frames.
+        if (impactTimer > 0f) {
+            val p = impactTimer / 0.12f
+            paint.style = Paint.Style.STROKE
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.color = Color.argb((p * 210f).toInt().coerceIn(0, 210), 240, 248, 255)
+            paint.strokeWidth = 2.4f
+            val spread = (1f - p) * 9f
+            canvas.drawLine(impactX - spread, impactY - spread, impactX - spread - 4f, impactY - spread - 4f, paint)
+            canvas.drawLine(impactX + spread, impactY - spread * 0.5f, impactX + spread + 5f, impactY - spread * 0.5f - 2f, paint)
         }
 
         // Heal Focus Aura
@@ -915,5 +877,13 @@ class Player(
                 canvas.drawLine(trailX, trailY, trailX - dir * 18f, trailY, paint)
             }
         }
+    }
+
+    companion object {
+        /** Blade angles in degrees around the hand; negative is up, matching Canvas.rotate. */
+        private const val SLASH_START = -122f  // raised back over the shoulder
+        private const val SLASH_END = 54f      // finished low and forward
+        private const val THRUST_ANGLE = -6f   // point level with the target
+        private const val ARC_RADIUS = 47f     // matches the blade length so the trail hugs it
     }
 }

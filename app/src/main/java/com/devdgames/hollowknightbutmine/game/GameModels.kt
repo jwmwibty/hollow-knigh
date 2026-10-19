@@ -23,11 +23,8 @@ enum class PlayerState {
     JUMPING,
     FALLING,
     DASHING,
-    STABBING,      // Quick safety pin thrust
-    GRABBING,      // Reaching out with open safety pin clasp/hook
-    HOLDING_ENEMY, // Pin has latched onto enemy, ready to headbutt!
-    HEADBUTTING,   // Smashing grabbed enemy with the horned mask
-    PARRYING,      // Defending with clasp
+    SLASHING,      // Light attack: sword slash through a wide arc
+    STABBING,      // Committed forward thrust with the sword's point
     HEALING,       // Focus soul / silk to restore HP
     HURT,
     DEAD           // Brief death pause before respawning
@@ -47,7 +44,6 @@ enum class EnemyType {
 data class AttackHitbox(
     val rect: RectF,
     val damage: Int,
-    val isGrab: Boolean = false,
     val knockbackX: Float = 0f,
     val knockbackY: Float = 0f
 )

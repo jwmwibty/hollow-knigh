@@ -60,9 +60,15 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 world.player.startHeal()
                 return true
             }
-            KeyEvent.KEYCODE_F -> {
+            KeyEvent.KEYCODE_J -> {
                 if (event.repeatCount == 0) {
-                    world.player.grab(world.enemies)
+                    world.player.slash()
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_K -> {
+                if (event.repeatCount == 0) {
+                    world.player.stab()
                 }
                 return true
             }
@@ -110,12 +116,12 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
 
         if (action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_DOWN) {
             if ((buttonState and MotionEvent.BUTTON_PRIMARY) != 0) {
-                // Left Mouse Click -> Stab
-                world.player.stab()
+                // Left Mouse Click -> Light attack (slash)
+                world.player.slash()
                 return true
             } else if ((buttonState and MotionEvent.BUTTON_SECONDARY) != 0) {
-                // Right Mouse Click -> Parry
-                world.player.startParry()
+                // Right Mouse Click -> Stab (forward thrust)
+                world.player.stab()
                 return true
             }
         }
@@ -128,10 +134,10 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             val buttonState = event.buttonState
             if (event.action == MotionEvent.ACTION_DOWN) {
                 if ((buttonState and MotionEvent.BUTTON_SECONDARY) != 0) {
-                    world.player.startParry()
+                    world.player.stab()
                     return true
                 } else {
-                    world.player.stab()
+                    world.player.slash()
                     return true
                 }
             }

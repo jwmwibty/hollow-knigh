@@ -85,6 +85,9 @@ abstract class BossBrain(val spec: BossSpec, val arena: BossArena, seed: Int = 0
     val isAwake: Boolean get() = mode != Mode.SLEEP && mode != Mode.AWAKEN
     val isStaggered: Boolean get() = mode == Mode.STAGGER
 
+    /** Seconds left in the current stagger; 0 when the boss is not staggered. */
+    val staggerRemaining: Float get() = if (isStaggered) (staggerLen - modeTime).coerceAtLeast(0f) else 0f
+
     /** The punish window: full damage is taken now. */
     val isExposed: Boolean get() = mode == Mode.RECOVER || mode == Mode.STAGGER
 
