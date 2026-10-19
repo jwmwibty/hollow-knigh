@@ -584,6 +584,7 @@ class GameWorld {
             SignalType.AWAKEN -> {
                 triggerShake(7f, 0.5f)
                 showTitle(rig.spec.name, rig.spec.title, 3.4f)
+                bindHallBench(rig)
             }
             SignalType.HIT -> spawnSparks(s.x, s.y, 8, Color.rgb(255, 245, 215))
             SignalType.GUARD -> spawnSparks(s.x, s.y, 3, Color.rgb(150, 160, 190))
@@ -614,6 +615,18 @@ class GameWorld {
             SignalType.SHOT -> spawnSparks(s.x, s.y, 5, rig.spec.accent)
             SignalType.TELEGRAPH, SignalType.STRIKE -> {}
         }
+    }
+
+    /**
+     * A defeat must send the player back to the hall's door, not across the kingdom, even if they
+     * never sat on its bench: the moment a fight starts, that bench becomes the respawn point.
+     */
+    private fun bindHallBench(rig: BossRig) {
+        val bench = benches.firstOrNull { it.areaId == rig.spec.areaId } ?: return
+        for (o in benches) o.isCurrent = false
+        bench.isCurrent = true
+        bench.discovered = true
+        currentBench = bench
     }
 
     private fun showTitle(name: String, sub: String, duration: Float) {
