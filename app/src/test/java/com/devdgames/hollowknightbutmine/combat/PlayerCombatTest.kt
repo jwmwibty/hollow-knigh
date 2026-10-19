@@ -191,12 +191,20 @@ class PlayerCombatTest {
         assertFalse(c.connected)
         c.onHit()
         assertTrue("the hit should close the damage window", c.connected)
-        // Still active, but connected: Player leaves the hitbox down for the rest of the swing.
+
+        // The swing still plays out: Player keeps the hitbox down for the rest of the ACTIVE
+        // window, and the strike itself is never cut short by connecting.
         run(c, slash.active * 0.5f)
         assertTrue(c.connected)
+        assertEquals(AttackPhase.ACTIVE, c.phase)
+        run(c, slash.active * 0.5f)
+        assertEquals(AttackPhase.RECOVERY, c.phase)
+        assertTrue("a connected swing stays connected until it is over", c.connected)
 
-        c.begin(CombatMove.THRUST)
+        // The next swing comes out of the recovery tail and starts able to hit again.
+        assertTrue("recovery should accept the next attack", c.begin(CombatMove.THRUST))
         assertFalse("the next swing must be able to hit again", c.connected)
+        assertEquals(2, c.swings)
     }
 
     @Test
