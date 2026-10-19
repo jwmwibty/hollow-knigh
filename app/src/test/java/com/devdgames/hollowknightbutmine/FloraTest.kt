@@ -10,15 +10,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.sqrt
 
 /**
  * Vegetation is generated from stable seeds, so these tests pin the properties that make it
- * look natural (patchy, varied, irregular) and safe (deterministic, clear of hazards, absent
- * from biomes whose material should stay bare). They run on the JVM: the generator has no
+ * look natural (patchy, varied, irregular) and safe (deterministic, clear of hazards, subtle in
+ * biomes whose material should stay mostly bare). They run on the JVM: the generator has no
  * Android dependencies.
  */
 class FloraTest {
@@ -224,27 +223,41 @@ class FloraTest {
     }
 
     @Test
-    fun `stone metal crystal and bone surfaces stay bare`() {
-        for (b in listOf(Biome.CITY, Biome.CRYSTAL, Biome.DEEPNEST, Biome.BASIN, Biome.ABYSS)) {
-            assertNull("$b should not grow plants", Flora.profile(b))
+    fun `every biome grows cuttable grass on most platforms`() {
+        val len = 1200f
+        val runs = 40
+        for (biome in Biome.values()) {
+            val profile = Flora.profile(biome)
+            assertNotNull("$biome should grow plants", profile)
+            for (surface in listOf(Flora.SURFACE_ROCK, Flora.SURFACE_LEDGE)) {
+                var blades = 0
+                var runsWithGrass = 0
+                for (seed in 1..runs) {
+                    val plan = Flora.plan(profile!!, Flora.seed("everywhere$surface", seed, seed * 7), 0f, len, surface)
+                    blades += plan.blades.size
+                    if (plan.blades.isNotEmpty()) runsWithGrass++
+                }
+                assertTrue("$biome surface $surface grew no blades at all", blades > 0)
+                assertTrue(
+                    "$biome surface $surface: only $runsWithGrass of $runs platforms carry grass",
+                    runsWithGrass * 2 > runs
+                )
+            }
         }
-        for (b in listOf(Biome.GREEN, Biome.CLIFFS, Biome.FUNGAL, Biome.WATERWAYS)) {
-            assertNotNull("$b should grow plants", Flora.profile(b))
-        }
-        val vegetated = Biome.values().count { Flora.profile(it) != null }
-        assertTrue("too many biomes are vegetated: $vegetated of ${Biome.values().size}", vegetated <= 8)
     }
 
     @Test
     fun `sparse biomes stay subtle while lush ones are dense`() {
         val lush = bladesPer1000(plans(Biome.GREEN))
-        for (b in listOf(Biome.TOWN, Biome.CROSSROADS, Biome.EDGE)) {
+        val sparseBiomes = listOf(
+            Biome.TOWN, Biome.CROSSROADS, Biome.RESTING, Biome.EDGE,
+            Biome.CITY, Biome.CRYSTAL, Biome.DEEPNEST, Biome.BASIN, Biome.ABYSS
+        )
+        for (b in sparseBiomes) {
             val sparse = bladesPer1000(plans(b))
-            assertTrue("$b is not subtle: $sparse blades per 1000px", sparse < 45f)
-            assertTrue("$b is not even slightly planted", sparse > 3f)
-            assertTrue("$b ($sparse) should be far sparser than green ($lush)", sparse * 5f < lush)
+            assertTrue("$b is not subtle: $sparse blades per 1000px", sparse < lush / 4f)
+            assertTrue("$b is not even slightly planted: $sparse", sparse > 1f)
         }
-        assertTrue(bladesPer1000(plans(Biome.RESTING)) < 100f)
     }
 
     @Test

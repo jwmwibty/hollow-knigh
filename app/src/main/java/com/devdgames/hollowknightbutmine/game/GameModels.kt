@@ -36,6 +36,9 @@ enum class EnemyType {
     SPITTER,           // Acid / silk spitter artillery bug
     SHIELDER,          // Heavy armored husk with a chitin shield
     MOSS_CHARGER,      // Aggressive charger beast
+    LURKER,            // Ambush enemy: hides underground, bursts up when player approaches
+    SWOOPER,           // Ceiling-clinging predator: drops down rapidly on passing prey
+    RUNEWEAVER,        // Arcane caster: 3-shot projectile spread, tactical retreat
     BROODMOTHER,       // Chapter 1 Boss: Giant winged matriarch that bombards acid & spawns swarms
     OSSUARY_TITAN,     // Chapter 2 Boss: Gigantic bone golem with hammer smashes & shockwaves
     COLONNADE_KNIGHT   // Chapter 3 Boss: Ancient Royal Duelist with lance thrusts & teleports

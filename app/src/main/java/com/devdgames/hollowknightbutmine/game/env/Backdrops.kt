@@ -131,6 +131,126 @@ object Backdrops {
         paint.alpha = 255
     }
 
+    /**
+     * Draws grounded visual hints of an adjacent neighboring biome [neighborBiome] along
+     * the screen edge [direction] (-1 = left, 1 = right, 0 = below, 2 = above).
+     *
+     * [alpha] (0.0 .. 0.35 max) controls the subtle blend as the player approaches the border.
+     * This is PURELY VISUAL: map discovery and explored status remain strictly unchanged.
+     */
+    fun drawNeighborHint(
+        canvas: Canvas, paint: Paint,
+        neighborBiome: Biome, neighborPal: BiomePalette,
+        direction: Int,
+        alpha: Float,
+        camX: Float, camY: Float, viewW: Float, viewH: Float, t: Float
+    ) {
+        if (alpha <= 0.01f) return
+        val clampedAlpha = alpha.coerceIn(0f, 0.35f)
+        val alphaInt = (clampedAlpha * 255f).toInt()
+
+        canvas.save()
+        when (direction) {
+            -1 -> canvas.clipRect(0f, 0f, viewW * 0.4f, viewH)
+            1 -> canvas.clipRect(viewW * 0.6f, 0f, viewW, viewH)
+            0 -> canvas.clipRect(0f, viewH * 0.6f, viewW, viewH)
+            else -> canvas.clipRect(0f, 0f, viewW, viewH * 0.4f)
+        }
+
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+
+        val washColor = Color.argb(
+            (alphaInt * 0.5f).toInt(),
+            Color.red(neighborPal.far),
+            Color.green(neighborPal.far),
+            Color.blue(neighborPal.far)
+        )
+        paint.color = washColor
+        canvas.drawRect(0f, 0f, viewW, viewH, paint)
+
+        val farColor = Color.argb(
+            alphaInt,
+            Color.red(neighborPal.far),
+            Color.green(neighborPal.far),
+            Color.blue(neighborPal.far)
+        )
+        val midColor = Color.argb(
+            (alphaInt * 0.85f).toInt(),
+            Color.red(neighborPal.mid),
+            Color.green(neighborPal.mid),
+            Color.blue(neighborPal.mid)
+        )
+
+        when (neighborBiome) {
+            Biome.TOWN, Biome.CLIFFS -> {
+                surface(canvas, paint, neighborBiome, neighborPal, camX, camY, viewW, viewH)
+            }
+            Biome.CROSSROADS -> {
+                cells(canvas, camX, camY, 0.2f, viewW, viewH, 600f, 700f, 11) { r, x, y ->
+                    pillars(canvas, paint, r, x, y, 600f, 700f, farColor)
+                }
+            }
+            Biome.GREEN -> {
+                cells(canvas, camX, camY, 0.2f, viewW, viewH, 620f, 760f, 21) { r, x, y ->
+                    roots(canvas, paint, r, x, y, 620f, 760f, farColor)
+                }
+                cells(canvas, camX, camY, 0.4f, viewW, viewH, 520f, 520f, 22) { r, x, y ->
+                    ferns(canvas, paint, r, x, y, 520f, 520f, midColor, neighborPal.glow)
+                }
+            }
+            Biome.FUNGAL -> {
+                cells(canvas, camX, camY, 0.2f, viewW, viewH, 640f, 720f, 31) { r, x, y ->
+                    bigShrooms(canvas, paint, r, x, y, 640f, 720f, farColor, 1.3f)
+                }
+            }
+            Biome.CITY -> {
+                cells(canvas, camX, camY, 0.16f, viewW, viewH, 520f, 900f, 41) { r, x, y ->
+                    towers(canvas, paint, r, x, y, 520f, 900f, farColor, (40 * clampedAlpha).toInt())
+                }
+            }
+            Biome.CRYSTAL -> {
+                cells(canvas, camX, camY, 0.2f, viewW, viewH, 600f, 720f, 51) { r, x, y ->
+                    spires(canvas, paint, r, x, y, 600f, 720f, farColor, neighborPal.glow, 1.4f)
+                }
+            }
+            Biome.RESTING -> {
+                cells(canvas, camX, camY, 0.2f, viewW, viewH, 640f, 700f, 61) { r, x, y ->
+                    crypt(canvas, paint, r, x, y, 640f, 700f, farColor)
+                }
+            }
+            Biome.EDGE -> {
+                cells(canvas, camX, camY, 0.18f, viewW, viewH, 700f, 800f, 71) { r, x, y ->
+                    crags(canvas, paint, r, x, y, 700f, 800f, farColor, 1.2f)
+                }
+            }
+            Biome.WATERWAYS -> {
+                cells(canvas, camX, camY, 0.2f, viewW, viewH, 640f, 640f, 81) { r, x, y ->
+                    pipes(canvas, paint, r, x, y, 640f, 640f, farColor)
+                }
+            }
+            Biome.DEEPNEST -> {
+                cells(canvas, camX, camY, 0.2f, viewW, viewH, 600f, 600f, 91) { r, x, y ->
+                    webs(canvas, paint, r, x, y, 600f, 600f, farColor)
+                }
+            }
+            Biome.BASIN -> {
+                cells(canvas, camX, camY, 0.2f, viewW, viewH, 760f, 760f, 101) { r, x, y ->
+                    ribs(canvas, paint, r, x, y, 760f, 760f, farColor, 12f)
+                }
+            }
+            Biome.ABYSS -> {
+                cells(canvas, camX, camY, 0.3f, viewW, viewH, 600f, 600f, 111) { r, x, y ->
+                    voidTendrils(canvas, paint, r, x, y, 600f, 600f, t)
+                }
+            }
+        }
+
+        canvas.restore()
+        paint.shader = null
+        paint.alpha = 255
+    }
+
     private inline fun cells(
         canvas: Canvas, camX: Float, camY: Float, f: Float, viewW: Float, viewH: Float,
         cw: Float, ch: Float, seed: Int, block: (Random, Float, Float) -> Unit

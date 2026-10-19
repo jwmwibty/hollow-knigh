@@ -73,7 +73,7 @@ class AreaDef(
         fun isSolid(c: Char): Boolean = c == '#'
         fun isLedge(c: Char): Boolean = c == '='
         fun isHazard(c: Char): Boolean = c == '^' || c == '~'
-        fun isEnemy(c: Char): Boolean = c in "cfphmM123"
+        fun isEnemy(c: Char): Boolean = c in "cfphmM123jwr"
         fun isBoss(c: Char): Boolean = c in "M123"
     }
 }

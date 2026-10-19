@@ -19,6 +19,8 @@ import com.devdgames.hollowknightbutmine.game.boss.BossSpec
 import com.devdgames.hollowknightbutmine.game.boss.SignalType
 import com.devdgames.hollowknightbutmine.game.env.EnemySpawnPoint
 import com.devdgames.hollowknightbutmine.game.world.AreaDef
+import com.devdgames.hollowknightbutmine.game.world.AreaGrid
+import com.devdgames.hollowknightbutmine.game.world.GrassCutState
 import com.devdgames.hollowknightbutmine.game.world.WorldAtlas
 import com.devdgames.hollowknightbutmine.game.world.WorldLayout
 import kotlin.math.abs
@@ -77,6 +79,8 @@ class GameWorld {
     val particles = mutableListOf<Particle>()
     val benches = ArrayList<Bench>()
 
+    /** Tracks which grass chunks the player has cut; regrows after 4 s (purely visual). */
+    private val grassCuts = GrassCutState()
     private class SpawnRecord(val areaId: String, val point: EnemySpawnPoint, var enemy: Enemy?)
     private val spawnRecords = ArrayList<SpawnRecord>()
 
@@ -191,6 +195,16 @@ class GameWorld {
             '1' -> Enemy(p.x, p.y, type = EnemyType.BROODMOTHER, isBoss = true)
             '2' -> Enemy(p.x, p.y, type = EnemyType.OSSUARY_TITAN, isBoss = true)
             '3' -> Enemy(p.x, p.y, type = EnemyType.COLONNADE_KNIGHT, isBoss = true)
+            // ---- new enemy types -----------------------------------------------
+            'j' -> Enemy(p.x, p.y, type = EnemyType.LURKER)
+            'w' -> Enemy(p.x, p.y, type = EnemyType.SWOOPER).also { sw ->
+                // Swooper spawns at its tile Y; that tile's top is the ceiling it clings to.
+                // AreaScene places non-flyer enemies at (row+1)*T so y is the floor of the row.
+                // The ceiling is one tile above the spawn row, i.e. spawn_y - TILE.
+                sw.ceilingY = p.y - AreaDef.TILE
+                sw.y = sw.ceilingY + sw.height   // start clung to ceiling
+            }
+            'r' -> Enemy(p.x, p.y, type = EnemyType.RUNEWEAVER)
             else -> Enemy(p.x, p.y)
         }
         enemy.onShootProjectile = { px, py, pvx, pvy ->
@@ -376,6 +390,37 @@ class GameWorld {
             deathTimer = 2.2f
             triggerShake(12f, 0.35f)
             abortBossFights()
+        }
+
+        // ---- grass cut: tick timers
+        grassCuts.update(dt)
+
+        // ---- grass cut: detect player attack hitting grass chunks (purely visual)
+        val activeHitbox = player.activeHitbox
+        if (activeHitbox != null && (player.state == PlayerState.STABBING || player.state == PlayerState.SLASHING)) {
+            val scene = currentScene
+            if (scene != null) {
+                val chunks = scene.floraChunks
+                val hitLeft = activeHitbox.rect.left
+                val hitTop = activeHitbox.rect.top
+                val hitRight = activeHitbox.rect.right
+                val hitBottom = activeHitbox.rect.bottom + 24f
+                for (i in chunks.indices) {
+                    val chunk = chunks[i]
+                    if (hitRight > chunk.bounds.left && hitLeft < chunk.bounds.right &&
+                        hitBottom > chunk.bounds.top && hitTop < chunk.bounds.bottom) {
+                        val key = GrassCutState.key(scene.def.id, i)
+                        if (!grassCuts.isCut(key)) {
+                            grassCuts.cut(key)
+                            // Crisp burst of cut blade particles in biome vegetation colors
+                            val mx = (activeHitbox.rect.centerX() + chunk.bounds.centerX()) * 0.5f
+                            val my = chunk.bounds.bottom - 6f
+                            spawnSparks(mx, my, 4, scene.pal.mossLit)
+                            spawnSparks(mx, my, 2, scene.pal.moss)
+                        }
+                    }
+                }
+            }
         }
 
         // ---- enemies (only the ones near enough to matter)
@@ -676,6 +721,40 @@ class GameWorld {
         Backdrops.drawSky(canvas, paint, scene.pal, viewW, viewH, camX, camY, scene.def.openSky, gameTime)
         Backdrops.drawParallax(canvas, paint, scene.biome, scene.pal, camX, camY, viewW, viewH, gameTime)
 
+        // Grounded neighboring biome visibility: if player is within 400px of an adjacent biome boundary,
+        // blend subtle parallax hints along the screen edge (PURELY VISUAL, separate from map discovery).
+        for (s in scenes) {
+            if (s.def.id != scene.def.id && s.biome != scene.biome) {
+                val isLeft = s.bounds.right in (scene.bounds.left - 2f)..(scene.bounds.left + 2f) &&
+                    s.bounds.bottom > scene.bounds.top && s.bounds.top < scene.bounds.bottom
+                val isRight = s.bounds.left in (scene.bounds.right - 2f)..(scene.bounds.right + 2f) &&
+                    s.bounds.bottom > scene.bounds.top && s.bounds.top < scene.bounds.bottom
+                val isBelow = s.bounds.top in (scene.bounds.bottom - 2f)..(scene.bounds.bottom + 2f) &&
+                    s.bounds.right > scene.bounds.left && s.bounds.left < scene.bounds.right
+
+                val dir: Int
+                val dist: Float
+                if (isLeft) {
+                    dir = -1
+                    dist = (player.x - scene.bounds.left).coerceAtLeast(0f)
+                } else if (isRight) {
+                    dir = 1
+                    dist = (scene.bounds.right - player.x).coerceAtLeast(0f)
+                } else if (isBelow) {
+                    dir = 0
+                    dist = (scene.bounds.bottom - player.y).coerceAtLeast(0f)
+                } else {
+                    dir = 999
+                    dist = Float.MAX_VALUE
+                }
+
+                if (dist < 400f) {
+                    val alpha = ((1f - dist / 400f) * 0.35f).coerceIn(0f, 0.35f)
+                    Backdrops.drawNeighborHint(canvas, paint, s.biome, s.pal, dir, alpha, camX, camY, viewW, viewH, gameTime)
+                }
+            }
+        }
+
         // 2. world layer
         canvas.save()
         canvas.translate(-camX, -camY)
@@ -683,7 +762,8 @@ class GameWorld {
         paint.style = Paint.Style.FILL
         paint.color = FILLER_COLOR
         for (f in fillers) if (RectF.intersects(f, view)) canvas.drawRect(f, paint)
-        for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawWorld(canvas, paint, view, gameTime)
+        val cutKeys = grassCuts.cutKeys()
+        for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawWorldWithCuts(canvas, paint, view, gameTime, cutKeys, s.def.id)
         for (b in benches) if (b.x > view.left - 80f && b.x < view.right + 80f && b.y > view.top - 80f && b.y < view.bottom + 80f) b.draw(canvas, paint, gameTime)
 
         for (rig in bossRigs) {

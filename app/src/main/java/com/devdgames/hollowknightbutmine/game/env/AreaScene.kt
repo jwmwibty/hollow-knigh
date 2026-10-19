@@ -12,6 +12,7 @@ import com.devdgames.hollowknightbutmine.game.world.AreaGrid
 import com.devdgames.hollowknightbutmine.game.world.Biome
 import com.devdgames.hollowknightbutmine.game.world.EdgeRun
 import com.devdgames.hollowknightbutmine.game.world.Flora
+import com.devdgames.hollowknightbutmine.game.world.GrassCutState
 import com.devdgames.hollowknightbutmine.game.world.TileRect
 import com.devdgames.hollowknightbutmine.game.world.WorldLayout
 import kotlin.math.abs
@@ -70,6 +71,7 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
     private val ledgeArt = ArrayList<LedgeArt>()
     /** Grass, moss cushions, roots and flowers, in swaying ~96 px chunks (see [FloraArt]). */
     private val flora = ArrayList<FloraChunk>()
+    internal val floraChunks: List<FloraChunk> get() = flora
     private val acidPools = ArrayList<RectF>()
     private val spikeBeds = ArrayList<RectF>()
     private val lamps = ArrayList<PropAt>()
@@ -502,7 +504,7 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
                 }
                 '*' -> landmarks.add(PropAt(cx, floorY, m.col * 13 + m.row * 29, RectF(cx - 120f, floorY - 260f, cx + 120f, floorY + 20f)))
                 else -> if (AreaDef.isEnemy(m.char)) {
-                    val y = if (m.char == 'f' || m.char == '1') m.row * T + T / 2f else (m.row + 1) * T
+                    val y = if (m.char == 'f' || m.char == '1' || m.char == 'w') m.row * T + T / 2f else (m.row + 1) * T
                     enemySpawns.add(EnemySpawnPoint(cx, y, m.char))
                 }
             }
@@ -527,6 +529,14 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
      * rectangle in world units.
      */
     fun drawWorld(canvas: Canvas, paint: Paint, view: RectF, t: Float) {
+        drawWorldWithCuts(canvas, paint, view, t, emptySet(), def.id)
+    }
+
+    /**
+     * Everything that belongs to the world layer, behind the actors. Passes [cutKeys] to
+     * FloraArt so cut grass blades skip rendering while other flora remains.
+     */
+    fun drawWorldWithCuts(canvas: Canvas, paint: Paint, view: RectF, t: Float, cutKeys: Set<Long>, areaId: String) {
         paint.shader = null
         paint.style = Paint.Style.FILL
         paint.color = pal.rockDeep
@@ -545,7 +555,13 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         for (l in ledgeArt) if (vis(l.rect, view)) drawLedge(canvas, paint, l)
 
         // Plants grow over the rock and ledges but under every actor, prop and hazard.
-        for (c in flora) if (vis(c.bounds, view)) FloraArt.draw(canvas, paint, c, t)
+        for (i in flora.indices) {
+            val c = flora[i]
+            if (vis(c.bounds, view)) {
+                val key = GrassCutState.key(areaId, i)
+                FloraArt.drawWithCuts(canvas, paint, c, t, key, cutKeys)
+            }
+        }
 
         for (a in acidPools) if (vis(a, view)) Props.acidPool(canvas, paint, a, pal.hazard, pal.hazardLit, t)
         for (s in spikeBeds) if (vis(s, view)) Props.spikeBed(canvas, paint, s.left, s.right, s.top, s.bottom, pal.hazard, pal.hazardLit)

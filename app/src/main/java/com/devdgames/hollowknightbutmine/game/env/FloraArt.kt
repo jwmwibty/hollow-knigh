@@ -52,7 +52,7 @@ internal class FloraChunk(
 }
 
 internal object FloraArt {
-    private const val CHUNK = 96f
+    private const val CHUNK = 48f
     private const val TWO_PI = 6.2831855f
     private val tmp = RectF()
 
@@ -239,6 +239,55 @@ internal object FloraArt {
         if (mid != null) { paint.color = c.cMid; canvas.drawPath(mid, paint) }
         val front = c.front
         if (front != null) { paint.color = c.cLight; canvas.drawPath(front, paint) }
+        val pods = c.pods
+        if (pods != null) { paint.color = c.cPod; canvas.drawPath(pods, paint) }
+        val glow = c.glow
+        if (glow != null) { paint.color = c.cGlow; canvas.drawPath(glow, paint) }
+        val warm = c.warm
+        if (warm != null) { paint.color = c.cWarm; canvas.drawPath(warm, paint) }
+        canvas.restore()
+    }
+
+    /**
+     * Same as [draw] but skips blade layers (back/mid/front) when [chunkKey] is present in
+     * [cutKeys], giving the appearance of cut grass. Cushions, roots, pods and specks remain
+     * visible so the ground surface still reads as vegetated.
+     *
+     * This is PURELY COSMETIC: no collision or damage code is affected. No per-frame
+     * allocation — [cutKeys] is the live key-set from the game's GrassCutState.
+     */
+    fun drawWithCuts(canvas: Canvas, paint: Paint, c: FloraChunk, t: Float, chunkKey: Long, cutKeys: Set<Long>) {
+        val bladesCut = chunkKey in cutKeys
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        val cushions = c.cushions
+        if (cushions != null) {
+            paint.color = c.cCushion
+            canvas.drawPath(cushions, paint)
+        }
+        val roots = c.roots
+        if (roots != null) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeWidth = c.rootWidth
+            paint.color = c.cRoot
+            canvas.drawPath(roots, paint)
+            paint.style = Paint.Style.FILL
+            paint.strokeCap = Paint.Cap.BUTT
+        }
+        val k = c.amp * (sin(t * c.speed + c.phase) + 0.35f * sin(t * c.speed * 2.3f + c.phase * 1.7f))
+        canvas.save()
+        canvas.translate(c.pivotX, c.pivotY)
+        canvas.skew(k, 0f)
+        canvas.translate(-c.pivotX, -c.pivotY)
+        if (!bladesCut) {
+            val back = c.back
+            if (back != null) { paint.color = c.cDeep; canvas.drawPath(back, paint) }
+            val mid = c.mid
+            if (mid != null) { paint.color = c.cMid; canvas.drawPath(mid, paint) }
+            val front = c.front
+            if (front != null) { paint.color = c.cLight; canvas.drawPath(front, paint) }
+        }
         val pods = c.pods
         if (pods != null) { paint.color = c.cPod; canvas.drawPath(pods, paint) }
         val glow = c.glow

@@ -34,7 +34,10 @@ open class Enemy(
         EnemyType.COLONNADE_KNIGHT -> 420
         EnemyType.MOSS_CHARGER -> if (isBoss) 300 else 180
         EnemyType.SHIELDER -> 95
+        EnemyType.RUNEWEAVER -> 65
+        EnemyType.LURKER -> 55
         EnemyType.SPITTER -> 45
+        EnemyType.SWOOPER -> 40
         EnemyType.FLYER -> 35
         else -> 60
     }
@@ -47,9 +50,12 @@ open class Enemy(
         EnemyType.OSSUARY_TITAN -> 60f
         EnemyType.COLONNADE_KNIGHT -> 180f
         EnemyType.FLYER -> 110f
+        EnemyType.SWOOPER -> 90f
         EnemyType.SHIELDER -> 45f
+        EnemyType.RUNEWEAVER -> 50f
         EnemyType.SPITTER -> 35f
         EnemyType.MOSS_CHARGER -> 130f
+        EnemyType.LURKER -> 0f
         else -> 70f
     }
     var patrolTimer = 0f
@@ -73,6 +79,15 @@ open class Enemy(
     private var isDiving = false
     var bossPhase = 1
     var bossSpecialTimer = 0f
+
+    // Lurker ambush state
+    var isHiding = (type == EnemyType.LURKER)
+    var lurkerTimer = 0f
+
+    // Swooper ceiling dive state
+    var ceilingY = 0f
+    var swooperState = 0 // 0 = hanging/tracking, 1 = diving, 2 = ground pause, 3 = ascending
+    var swooperTimer = 0f
 
     // Spitter / Boss projectile callback (x, y, vx, vy)
     var onShootProjectile: ((x: Float, y: Float, vx: Float, vy: Float) -> Unit)? = null
@@ -112,6 +127,18 @@ open class Enemy(
                 width = 50f
                 height = 52f
             }
+            EnemyType.LURKER -> {
+                width = 48f
+                height = 36f
+            }
+            EnemyType.SWOOPER -> {
+                width = 36f
+                height = 36f
+            }
+            EnemyType.RUNEWEAVER -> {
+                width = 46f
+                height = 58f
+            }
             else -> {}
         }
     }
@@ -125,13 +152,14 @@ open class Enemy(
      * True when this enemy hurts a player occupying [playerBox] right now. Ordinary enemies hurt
      * on any body contact; bosses add weapon boxes and hazards (see game/boss/BossEnemy).
      */
-    open fun hurtsPlayer(playerBox: RectF): Boolean = RectF.intersects(playerBox, getBoundingBox())
+    open fun hurtsPlayer(playerBox: RectF): Boolean =
+        if (isHiding) false else RectF.intersects(playerBox, getBoundingBox())
 
     /** Masks taken by the contact that [hurtsPlayer] just reported. */
     open val touchDamage: Int get() = 1
 
     open fun takeDamage(damage: Int, knockbackX: Float = 0f, knockbackY: Float = 0f, playEffect: (() -> Unit)? = null) {
-        if (!isAlive || invincibilityTimer > 0f) return
+        if (!isAlive || invincibilityTimer > 0f || isHiding) return
 
         // Shielder blocks frontal attacks; the counter is to strike it from behind.
         if (type == EnemyType.SHIELDER) {
@@ -175,6 +203,9 @@ open class Enemy(
             EnemyType.SPITTER -> updateSpitterAI(dt, playerX, playerY, platforms)
             EnemyType.SHIELDER -> updateShielderAI(dt, playerX, playerY, platforms)
             EnemyType.MOSS_CHARGER -> updateChargerAI(dt, playerX, playerY, platforms)
+            EnemyType.LURKER -> updateLurkerAI(dt, playerX, playerY, platforms)
+            EnemyType.SWOOPER -> updateSwooperAI(dt, playerX, playerY)
+            EnemyType.RUNEWEAVER -> updateRuneweaverAI(dt, playerX, playerY, platforms)
             else -> updateCrawlerAI(dt, playerX, playerY, platforms)
         }
     }
@@ -514,6 +545,153 @@ open class Enemy(
         applyPhysics(dt, platforms)
     }
 
+    private fun updateLurkerAI(dt: Float, playerX: Float, playerY: Float, platforms: List<RectF>) {
+        val dx = playerX - x
+        val distH = abs(dx)
+        val distV = abs(playerY - y)
+        facing = if (dx > 0) Facing.RIGHT else Facing.LEFT
+
+        if (isHiding) {
+            vx = 0f
+            vy = 0f
+            if (distH < 120f && distV < 140f) {
+                // Player stepped close: start unburrowing telegraph
+                lurkerTimer += dt
+                if (lurkerTimer >= 0.6f) {
+                    // Emerge with biting burst!
+                    isHiding = false
+                    isAttacking = true
+                    lurkerTimer = 0f
+                    vy = -180f
+                }
+            } else {
+                lurkerTimer = 0f
+            }
+        } else {
+            lurkerTimer += dt
+            if (isAttacking) {
+                val lungeDir = if (facing == Facing.RIGHT) 1f else -1f
+                vx = lungeDir * 120f
+                if (lurkerTimer > 0.8f) {
+                    isAttacking = false
+                }
+            } else {
+                vx *= 0.8f
+            }
+
+            // After 2.5s emerged, burrow back into ground
+            if (lurkerTimer >= 2.5f) {
+                isHiding = true
+                isAttacking = false
+                lurkerTimer = 0f
+                vx = 0f
+                vy = 0f
+            }
+            applyPhysics(dt, platforms)
+        }
+    }
+
+    private fun updateSwooperAI(dt: Float, playerX: Float, playerY: Float) {
+        if (ceilingY == 0f) {
+            ceilingY = y - height
+        }
+        val dx = playerX - x
+        facing = if (dx > 0) Facing.RIGHT else Facing.LEFT
+
+        when (swooperState) {
+            0 -> {
+                // Ceiling cling / track player
+                isAttacking = false
+                y = ceilingY + height
+                val targetVx = if (abs(dx) > 20f) (if (dx > 0) patrolSpeed else -patrolSpeed) else 0f
+                vx += (targetVx - vx) * 3f * dt
+                x += vx * dt
+
+                // Dive trigger: player directly underneath within 80px horizontal
+                if (abs(dx) < 80f && playerY > y && (playerY - y) in 40f..380f && attackCooldown <= 0f) {
+                    swooperState = 1
+                    isAttacking = true
+                    vy = 480f
+                    vx = 0f
+                }
+                if (attackCooldown > 0f) attackCooldown -= dt
+            }
+            1 -> {
+                // Diving downwards rapidly
+                vy += 600f * dt
+                if (vy > 560f) vy = 560f
+                y += vy * dt
+                if (y >= playerY - 4f) {
+                    y = playerY
+                    vy = 0f
+                    swooperState = 2
+                    swooperTimer = 0.5f // Pause on ground
+                    isAttacking = false
+                }
+            }
+            2 -> {
+                vx = 0f
+                swooperTimer -= dt
+                if (swooperTimer <= 0f) {
+                    swooperState = 3
+                    vy = -200f
+                }
+            }
+            3 -> {
+                // Ascending back to ceiling
+                vy = -200f
+                y += vy * dt
+                if (y <= ceilingY + height) {
+                    y = ceilingY + height
+                    vy = 0f
+                    swooperState = 0
+                    attackCooldown = 2.0f
+                }
+            }
+        }
+    }
+
+    private fun updateRuneweaverAI(dt: Float, playerX: Float, playerY: Float, platforms: List<RectF>) {
+        val dx = playerX - x
+        val dist = abs(dx)
+        facing = if (dx > 0) Facing.RIGHT else Facing.LEFT
+
+        if (dist < 500f && abs(playerY - y) < 220f) {
+            if (dist < 200f) {
+                // Tactical retreat
+                val fleeVx = if (facing == Facing.RIGHT) -patrolSpeed * 1.5f else patrolSpeed * 1.5f
+                vx += (fleeVx - vx) * 6f * dt
+            } else {
+                vx *= 0.8f
+            }
+
+            attackCooldown -= dt
+            if (attackCooldown <= 0f) {
+                attackWindup += dt
+                isAttacking = true
+                if (attackWindup >= 0.7f) {
+                    val shootDir = if (facing == Facing.RIGHT) 1f else -1f
+                    // 3-shot arc pattern: angled up, straight, angled down
+                    onShootProjectile?.invoke(x + shootDir * 20f, y - height * 0.6f, shootDir * 290f, -100f)
+                    onShootProjectile?.invoke(x + shootDir * 20f, y - height * 0.6f, shootDir * 330f, -20f)
+                    onShootProjectile?.invoke(x + shootDir * 20f, y - height * 0.6f, shootDir * 270f, 60f)
+
+                    vx = -shootDir * 180f
+                    vy = -120f
+                    attackCooldown = 3.5f
+                    attackWindup = 0f
+                    isAttacking = false
+                }
+            }
+        } else {
+            isAttacking = false
+            attackWindup = 0f
+            vx *= 0.8f
+        }
+
+        applyPhysics(dt, platforms)
+    }
+
     private fun applyPhysics(dt: Float, platforms: List<RectF>) {
         vy += 1200f * dt
         if (vy > 900f) vy = 900f
@@ -585,6 +763,9 @@ open class Enemy(
             EnemyType.SPITTER -> drawSpitter(canvas, paint, dir)
             EnemyType.SHIELDER -> drawShielder(canvas, paint, dir)
             EnemyType.MOSS_CHARGER -> drawCharger(canvas, paint, dir)
+            EnemyType.LURKER -> drawLurker(canvas, paint, dir)
+            EnemyType.SWOOPER -> drawSwooper(canvas, paint, dir)
+            EnemyType.RUNEWEAVER -> drawRuneweaver(canvas, paint, dir)
             else -> drawCrawler(canvas, paint, dir)
         }
 
@@ -889,7 +1070,168 @@ open class Enemy(
         canvas.drawCircle(x + dir * 22f, y - height * 0.58f, 3.5f, paint)
     }
 
+    private fun drawLurker(canvas: Canvas, paint: Paint, dir: Float) {
+        if (isHiding) {
+            paint.style = Paint.Style.FILL
+            paint.color = Color.rgb(75, 55, 40)
+            val mound = Path()
+            mound.moveTo(x - 22f, y)
+            val shake = if (lurkerTimer > 0f) (sin(lurkerTimer * 30f) * 2f) else 0f
+            mound.quadTo(x + shake, y - 14f, x + 22f, y)
+            mound.close()
+            canvas.drawPath(mound, paint)
+
+            paint.color = Color.rgb(105, 80, 60)
+            canvas.drawCircle(x - 10f, y - 4f, 3f, paint)
+            canvas.drawCircle(x + 12f, y - 3f, 2.5f, paint)
+
+            if (lurkerTimer > 0.15f) {
+                paint.color = Color.rgb(255, 60, 40)
+                canvas.drawCircle(x - 5f + dir * 3f, y - 7f, 2.5f, paint)
+                canvas.drawCircle(x + 5f + dir * 3f, y - 7f, 2.5f, paint)
+            }
+            return
+        }
+
+        val bodyColor = when {
+            flashTimer > 0f -> Color.WHITE
+            isStunned -> Color.rgb(255, 235, 59)
+            isAttacking -> Color.rgb(230, 80, 50)
+            else -> Color.rgb(90, 60, 45)
+        }
+
+        paint.style = Paint.Style.FILL
+        paint.color = bodyColor
+        val box = getBoundingBox()
+        canvas.drawRoundRect(box, 14f, 14f, paint)
+
+        paint.color = Color.rgb(60, 40, 30)
+        for (i in 0..2) {
+            val sx = x - 14f + i * 14f
+            val sy = y - height * 0.85f
+            val spike = Path()
+            spike.moveTo(sx - 4f, sy + 6f)
+            spike.lineTo(sx, sy - 8f)
+            spike.lineTo(sx + 4f, sy + 6f)
+            spike.close()
+            canvas.drawPath(spike, paint)
+        }
+
+        paint.color = if (isAttacking) Color.rgb(255, 50, 30) else Color.rgb(255, 170, 40)
+        canvas.drawCircle(x + dir * 12f, y - height * 0.65f, 4.5f, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3.5f
+        paint.color = Color.rgb(210, 190, 160)
+        val jawOpen = if (isAttacking) 10f else 4f
+        canvas.drawLine(x + dir * 16f, y - height * 0.45f - jawOpen, x + dir * 28f, y - height * 0.45f - 2f, paint)
+        canvas.drawLine(x + dir * 16f, y - height * 0.45f + jawOpen, x + dir * 28f, y - height * 0.45f + 2f, paint)
+        paint.style = Paint.Style.FILL
+    }
+
+    private fun drawSwooper(canvas: Canvas, paint: Paint, dir: Float) {
+        val bodyColor = when {
+            flashTimer > 0f -> Color.WHITE
+            isStunned -> Color.rgb(255, 235, 59)
+            isAttacking -> Color.rgb(240, 70, 70)
+            else -> Color.rgb(55, 40, 65)
+        }
+
+        paint.style = Paint.Style.FILL
+        paint.color = bodyColor
+
+        val cy = y - height * 0.5f
+        canvas.drawOval(x - 12f, cy - 14f, x + 12f, cy + 14f, paint)
+
+        val flared = swooperState == 1 || swooperState == 3
+        paint.color = Color.rgb(75, 55, 85)
+        val wing = Path()
+        if (flared) {
+            wing.moveTo(x, cy - 6f)
+            wing.lineTo(x - 26f, cy - 22f)
+            wing.lineTo(x - 14f, cy + 4f)
+            wing.lineTo(x - 28f, cy + 8f)
+            wing.lineTo(x - 6f, cy + 10f)
+            wing.close()
+            wing.moveTo(x, cy - 6f)
+            wing.lineTo(x + 26f, cy - 22f)
+            wing.lineTo(x + 14f, cy + 4f)
+            wing.lineTo(x + 28f, cy + 8f)
+            wing.lineTo(x + 6f, cy + 10f)
+            wing.close()
+        } else {
+            wing.moveTo(x - 10f, cy - 10f)
+            wing.lineTo(x - 18f, cy + 16f)
+            wing.lineTo(x - 4f, cy + 12f)
+            wing.close()
+            wing.moveTo(x + 10f, cy - 10f)
+            wing.lineTo(x + 18f, cy + 16f)
+            wing.lineTo(x + 4f, cy + 12f)
+            wing.close()
+        }
+        canvas.drawPath(wing, paint)
+
+        paint.color = if (isAttacking) Color.rgb(255, 40, 40) else Color.rgb(255, 140, 60)
+        canvas.drawCircle(x - 4f + dir * 2f, cy - 4f, 3f, paint)
+        canvas.drawCircle(x + 4f + dir * 2f, cy - 4f, 3f, paint)
+
+        if (swooperState == 1) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2.5f
+            paint.color = Color.rgb(220, 200, 160)
+            canvas.drawLine(x - 6f, y - 4f, x - 10f, y + 4f, paint)
+            canvas.drawLine(x + 6f, y - 4f, x + 10f, y + 4f, paint)
+            paint.style = Paint.Style.FILL
+        }
+    }
+
+    private fun drawRuneweaver(canvas: Canvas, paint: Paint, dir: Float) {
+        val bodyColor = when {
+            flashTimer > 0f -> Color.WHITE
+            isStunned -> Color.rgb(255, 235, 59)
+            isAttacking -> Color.rgb(120, 190, 255)
+            else -> Color.rgb(36, 44, 66)
+        }
+
+        paint.style = Paint.Style.FILL
+        paint.color = bodyColor
+        val box = getBoundingBox()
+        val robe = Path()
+        robe.moveTo(x, box.top + 16f)
+        robe.lineTo(box.right, box.bottom)
+        robe.lineTo(box.left, box.bottom)
+        robe.close()
+        canvas.drawPath(robe, paint)
+
+        paint.color = Color.rgb(48, 58, 86)
+        canvas.drawCircle(x, box.top + 18f, 15f, paint)
+
+        paint.color = Color.rgb(100, 220, 255)
+        canvas.drawOval(x + dir * 4f - 5f, box.top + 16f, x + dir * 4f, box.top + 21f, paint)
+
+        if (isAttacking || attackWindup > 0f) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f
+            paint.color = Color.rgb(120, 220, 255)
+            val glyphY = box.top - 12f
+            canvas.drawCircle(x, glyphY, 8f, paint)
+            canvas.drawLine(x - 6f, glyphY, x + 6f, glyphY, paint)
+            canvas.drawLine(x, glyphY - 6f, x, glyphY + 6f, paint)
+            paint.style = Paint.Style.FILL
+        }
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        paint.color = Color.rgb(180, 160, 140)
+        val staffX = x + dir * 18f
+        canvas.drawLine(staffX, box.top + 8f, staffX, box.bottom, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(80, 200, 255)
+        canvas.drawCircle(staffX, box.top + 6f, 5f, paint)
+    }
+
     private fun drawHPBar(canvas: Canvas, paint: Paint) {
+        if (isHiding) return
         val isMainBoss = isBoss || type == EnemyType.BROODMOTHER || type == EnemyType.OSSUARY_TITAN || type == EnemyType.COLONNADE_KNIGHT
         val barWidth = if (isMainBoss) width * 1.4f else width * 1.25f
         val barHeight = if (isMainBoss) 9f else 6f
@@ -909,6 +1251,9 @@ open class Enemy(
             EnemyType.SHIELDER -> Color.rgb(200, 160, 60)
             EnemyType.SPITTER -> Color.rgb(100, 210, 60)
             EnemyType.FLYER -> Color.rgb(140, 120, 220)
+            EnemyType.LURKER -> Color.rgb(160, 100, 60)
+            EnemyType.SWOOPER -> Color.rgb(180, 80, 180)
+            EnemyType.RUNEWEAVER -> Color.rgb(100, 160, 240)
             else -> Color.rgb(180, 70, 70)
         }
         canvas.drawRect(barLeft, barTop, barLeft + barWidth * hpPct, barTop + barHeight, paint)

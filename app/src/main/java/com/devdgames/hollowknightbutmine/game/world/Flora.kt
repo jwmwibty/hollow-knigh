@@ -21,7 +21,8 @@ import kotlin.math.pow
  *    result is identical on every launch and never changes between frames.
  *  - Plants never grow next to hazards: callers pass keep-out intervals for spike beds and
  *    acid, so grass can not be mistaken for something that hurts.
- *  - Only some biomes have plants at all; stone, metal, crystal and bone stay bare.
+ *  - Every biome grows something: the lush caves carry dense vegetation, while stone, crystal,
+ *    bone and the abyss keep only scattered tufts, so there is cuttable grass in more places.
  */
 
 /** Stateless integer hashing and 1-D value noise. Same inputs, same outputs, always. */
@@ -174,15 +175,15 @@ object Flora {
         spores = 0f, sway = 0.05f
     )
     private val town = FloraProfile(
-        coverage = 0.3f, patch = 160f, spacingMin = 18f, spacingMax = 40f, clumpMin = 1, clumpMax = 3,
-        hMin = 4f, hMax = 8f, wMin = 1.6f, wMax = 2.6f, tall = 0.06f, tallScale = 1.5f, wind = 0.2f,
-        cushions = 0f, moss = 0f, roots = 0f, sprouts = 0.1f, flowers = 0f, ferns = 0f, reeds = 0f,
+        coverage = 0.44f, patch = 90f, spacingMin = 18f, spacingMax = 38f, clumpMin = 2, clumpMax = 4,
+        hMin = 7f, hMax = 16f, wMin = 1.8f, wMax = 3.0f, tall = 0.22f, tallScale = 1.75f, wind = 0.2f,
+        cushions = 0.25f, moss = 0.25f, roots = 0f, sprouts = 0.15f, flowers = 0.12f, ferns = 0f, reeds = 0f,
         spores = 0f, sway = 0.05f
     )
     private val crossroads = FloraProfile(
-        coverage = 0.22f, patch = 160f, spacingMin = 20f, spacingMax = 44f, clumpMin = 1, clumpMax = 3,
-        hMin = 4f, hMax = 7f, wMin = 1.6f, wMax = 2.4f, tall = 0.05f, tallScale = 1.5f, wind = 0f,
-        cushions = 0f, moss = 0f, roots = 0f, sprouts = 0.08f, flowers = 0f, ferns = 0f, reeds = 0f,
+        coverage = 0.38f, patch = 110f, spacingMin = 20f, spacingMax = 42f, clumpMin = 2, clumpMax = 3,
+        hMin = 6f, hMax = 14f, wMin = 1.8f, wMax = 2.8f, tall = 0.18f, tallScale = 1.6f, wind = 0f,
+        cushions = 0.2f, moss = 0.2f, roots = 0.3f, sprouts = 0.12f, flowers = 0.05f, ferns = 0f, reeds = 0f,
         spores = 0f, sway = 0.04f
     )
     private val resting = FloraProfile(
@@ -197,10 +198,42 @@ object Flora {
         cushions = 0f, moss = 0f, roots = 0f, sprouts = 0f, flowers = 0f, ferns = 0f, reeds = 0f,
         spores = 0f, sway = 0.06f
     )
+    private val city = FloraProfile(
+        coverage = 0.3f, patch = 90f, spacingMin = 20f, spacingMax = 44f, clumpMin = 1, clumpMax = 2,
+        hMin = 3f, hMax = 9f, wMin = 1.4f, wMax = 2.6f, tall = 0.05f, tallScale = 1.4f, wind = 0.3f,
+        cushions = 0f, moss = 0f, roots = 0f, sprouts = 0.08f, flowers = 0.03f, ferns = 0f, reeds = 0f,
+        spores = 0f, sway = 0.05f
+    )
+    private val crystal = FloraProfile(
+        coverage = 0.26f, patch = 100f, spacingMin = 22f, spacingMax = 48f, clumpMin = 1, clumpMax = 2,
+        hMin = 2f, hMax = 7f, wMin = 1.2f, wMax = 2.2f, tall = 0.02f, tallScale = 1.3f, wind = 0.2f,
+        cushions = 0f, moss = 0f, roots = 0f, sprouts = 0.05f, flowers = 0f, ferns = 0f, reeds = 0f,
+        spores = 0f, sway = 0.04f
+    )
+    private val deepnest = FloraProfile(
+        coverage = 0.3f, patch = 95f, spacingMin = 20f, spacingMax = 46f, clumpMin = 1, clumpMax = 2,
+        hMin = 3f, hMax = 8f, wMin = 1.4f, wMax = 2.4f, tall = 0.03f, tallScale = 1.4f, wind = 0.2f,
+        cushions = 0f, moss = 0f, roots = 0f, sprouts = 0.06f, flowers = 0f, ferns = 0f, reeds = 0f,
+        spores = 0f, sway = 0.05f
+    )
+    private val basin = FloraProfile(
+        coverage = 0.3f, patch = 95f, spacingMin = 20f, spacingMax = 46f, clumpMin = 1, clumpMax = 2,
+        hMin = 3f, hMax = 8f, wMin = 1.4f, wMax = 2.4f, tall = 0.03f, tallScale = 1.4f, wind = 0.2f,
+        cushions = 0f, moss = 0f, roots = 0f, sprouts = 0.06f, flowers = 0f, ferns = 0f, reeds = 0f,
+        spores = 0f, sway = 0.05f
+    )
+    private val abyss = FloraProfile(
+        coverage = 0.22f, patch = 110f, spacingMin = 24f, spacingMax = 52f, clumpMin = 1, clumpMax = 1,
+        hMin = 2f, hMax = 6f, wMin = 1.2f, wMax = 2.0f, tall = 0f, tallScale = 1f, wind = 0.4f,
+        cushions = 0f, moss = 0f, roots = 0f, sprouts = 0f, flowers = 0f, ferns = 0f, reeds = 0f,
+        spores = 0f, sway = 0.04f
+    )
 
     /**
-     * How [biome] grows plants, or null when its surfaces stay bare: the city (stone and metal),
-     * crystal mines, the deep nest, the bone-strewn basin and the abyss keep their own materials.
+     * How [biome] grows plants. Every biome has a profile so the nail always finds grass
+     * somewhere; coverage varies from lush (green, fungal, waterways) to sparse (city, crystal,
+     * deepnest, basin, abyss), where the sparse profiles still scatter tufts along most
+     * platforms instead of leaving them bare.
      */
     fun profile(biome: Biome): FloraProfile? = when (biome) {
         Biome.GREEN -> green
@@ -211,7 +244,11 @@ object Flora {
         Biome.CROSSROADS -> crossroads
         Biome.RESTING -> resting
         Biome.EDGE -> edge
-        Biome.CITY, Biome.CRYSTAL, Biome.DEEPNEST, Biome.BASIN, Biome.ABYSS -> null
+        Biome.CITY -> city
+        Biome.CRYSTAL -> crystal
+        Biome.DEEPNEST -> deepnest
+        Biome.BASIN -> basin
+        Biome.ABYSS -> abyss
     }
 
     /** Stable per-platform seed from the area id and the platform's tile position. */
