@@ -87,6 +87,7 @@ class BossMeleeOnlyTest {
         for ((name, make) in makers) {
             val b = make(5)
             val px = BossTestKit.insideX(b.arena)
+            val py = b.arena.floorY - 1f
             BossTestKit.wake(b, px)
 
             // Only ever advance time: no stagger, no reflect, no grab is ever applied.
@@ -94,7 +95,7 @@ class BossMeleeOnlyTest {
             var exposed = 0f
             while (t < 20f) {
                 if (b.isExposed) exposed += DT
-                b.update(DT, px)
+                b.update(DT, px, py)
                 t += DT
             }
             assertTrue(
