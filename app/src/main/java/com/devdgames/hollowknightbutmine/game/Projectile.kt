@@ -16,7 +16,10 @@ class Projectile(
     var vy: Float,
     val radius: Float = 6f,
     val damage: Int = 1,
-    var isReflected: Boolean = false
+    var isReflected: Boolean = false,
+    /** Outer glow and bright core of an enemy shot; the defaults are the spitter's acid orange. */
+    val glowColor: Int = Color.rgb(255, 140, 20),
+    val coreColor: Int = Color.rgb(255, 230, 80)
 ) {
     var isAlive = true
     var life = 4.0f // Expiry timer
@@ -63,9 +66,9 @@ class Projectile(
             canvas.drawCircle(x, y, radius - 1f, paint)
         } else {
             // Toxic acid spit / orange infected blob
-            paint.color = Color.rgb(255, 140, 20)
+            paint.color = glowColor
             canvas.drawCircle(x, y, radius + 2f, paint)
-            paint.color = Color.rgb(255, 230, 80)
+            paint.color = coreColor
             canvas.drawCircle(x, y, radius - 1.5f, paint)
         }
     }
