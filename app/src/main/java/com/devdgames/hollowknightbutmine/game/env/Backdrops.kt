@@ -29,6 +29,11 @@ object Backdrops {
 
     private val path = Path()
     private val rect = RectF()
+    // Normalized grain coordinates are generated once, never allocated in the render loop.
+    private val skyGrain = FloatArray(840).also { values ->
+        val random = Random(7331)
+        for (i in values.indices) values[i] = random.nextFloat()
+    }
     private var skyShader: Shader? = null
     private var skyKey = 0
     private var skyH = 0f
@@ -58,11 +63,10 @@ object Backdrops {
         // using a bitmap, a runtime shader, or per-frame random allocations. The grain is
         // intentionally very faint so it reads as atmosphere rather than dirty pixels.
         canvas.save()
-        val grain = Random(7331)
         for (i in 0 until 420) {
-            val gx = grain.nextFloat() * viewW
-            val gy = grain.nextFloat() * viewH
-            val alpha = 3 + grain.nextInt(8)
+            val gx = skyGrain[i * 2] * viewW
+            val gy = skyGrain[i * 2 + 1] * viewH
+            val alpha = 3 + ((i * 17 + 5) % 8)
             paint.color = Color.argb(alpha, 205, 220, 238)
             canvas.drawRect(gx, gy, gx + 1.2f, gy + 1.2f, paint)
         }
