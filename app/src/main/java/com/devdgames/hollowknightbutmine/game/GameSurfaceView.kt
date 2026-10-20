@@ -57,7 +57,7 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 return true
             }
             KeyEvent.KEYCODE_E -> {
-                world.player.startHeal()
+                world.startHealOrInteract()
                 return true
             }
             KeyEvent.KEYCODE_J -> {
