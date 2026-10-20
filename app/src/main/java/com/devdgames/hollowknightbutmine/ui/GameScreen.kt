@@ -201,7 +201,7 @@ fun CombatActionButtons(
                 subLabel = "HEAL",
                 size = 56.dp,
                 accentColor = Color(0xFF64B5F6),
-                onPressStart = { gameView?.world?.player?.startHeal() },
+                onPressStart = { gameView?.world?.startHealOrInteract() },
                 onPressEnd = { gameView?.world?.player?.stopHeal() }
             )
 
