@@ -17,7 +17,7 @@ class StoryArea(private val originX: Float, private val floorY: Float) {
     private val keeperX = originX + 170f
     private val witnessX = originX + 390f
     private val puzzleX = originX + 650f
-    private val runeOrder = intArrayOf(2, 0, 1) // middle, left, right
+    private val runeOrder = intArrayOf(0, 1, 2) // left, middle, right
     private val activated = BooleanArray(3)
     private var nextRune = 0
     private var solved = false
@@ -113,6 +113,8 @@ class StoryArea(private val originX: Float, private val floorY: Float) {
             paint.typeface = Typeface.SERIF
             paint.color = Color.rgb(224, 204, 157)
             canvas.drawText("WE CHOSE TO FORGET", x, floorY - 68f, paint)
+            paint.textSize = 9f
+            canvas.drawText("LEFT  •  MIDDLE  •  RIGHT", x, floorY - 79f, paint)
             paint.textAlign = Paint.Align.LEFT
             paint.typeface = Typeface.DEFAULT
         }
