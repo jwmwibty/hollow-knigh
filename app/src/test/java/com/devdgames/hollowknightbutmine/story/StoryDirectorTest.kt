@@ -231,8 +231,8 @@ class StoryDirectorTest {
         assertEquals("and the bell opens it", QuestStage.OFFERED, story.log.stage("lamplight"))
         talkAndSettle(sable.x, sable.floorY)
         talkAndSettle(sable.x, sable.floorY)
-        assertEquals(QuestStage.ACTIVE, story.log.stage("lamplight"))
-        step(sable.x, sable.floorY)
+        // Taken and finished in the same breath: the shards were in hand before she asked, and the
+        // world is sampled every frame, so the errand is ready the moment it is accepted.
         assertEquals("the shards were already in hand", QuestStage.READY, story.log.stage("lamplight"))
         talkAndSettle(sable.x, sable.floorY)
         assertEquals(QuestStage.DONE, story.log.stage("lamplight"))

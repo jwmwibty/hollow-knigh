@@ -73,7 +73,9 @@ sizes itself from `maxMasks` and still fits.
 Four different kinds of thinking: reading an ordering out of the art, a parity puzzle, a timing
 run, and choosing the right subset under a failure state. The litany is a five-cell lights-out,
 which is deliberately *not* uniquely solvable — two different sets of three presses solve it
-(`[0,2,4]` and `[1,2,3]`), and `PuzzleTest` asserts that count rather than a single answer. The
+(`[0,2,4]` and `[1,2,3]`), and `PuzzleTest` enumerates all 32 press-sets and asserts those counts
+rather than a single answer. A third set, `[1,2,3,4]`, also ends woken: once the row is whole it
+stops listening, so the extra press is refused instead of undoing the work. The
 beacon's burn-down makes it the one puzzle that punishes dawdling, which is also why an ordinary
 puzzle press no longer takes the dialogue box (see below).
 

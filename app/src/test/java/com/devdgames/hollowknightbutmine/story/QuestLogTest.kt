@@ -163,12 +163,25 @@ class QuestLogTest {
         log.update(obs(bosses = setOf("keener")))
         assertEquals(QuestStage.ACTIVE, log.stage("vigil"))
         assertEquals(1, log.state("vigil")!!.openCount)
-        log.update(obs(bosses = setOf("shardback")))
-        assertEquals("one at a time is not both", QuestStage.ACTIVE, log.stage("vigil"))
         log.update(obs(bosses = setOf("keener", "shardback")))
-        assertEquals(QuestStage.READY, log.stage("vigil"))
+        assertEquals("both of them is the record", QuestStage.READY, log.stage("vigil"))
+        assertEquals(0, log.state("vigil")!!.openCount)
         val paid = log.turnIn("vigil")
         assertEquals(1, paid!!.maskReward)
+    }
+
+    @Test
+    fun `an objective already met is not taken back off by a partial sample`() {
+        val log = log()
+        log.accept("vigil")
+        log.update(obs(bosses = setOf("keener")))
+        assertEquals(1, log.state("vigil")!!.openCount)
+        // BossProgress only ever grows, so this cannot happen in the game. But the log is sampled
+        // rather than told, and a sample that happens to leave a kill out must not un-finish an
+        // objective the player has already done: progress ratchets, it does not flap.
+        log.update(obs(bosses = emptySet()))
+        assertEquals(QuestStage.ACTIVE, log.stage("vigil"))
+        assertEquals("the Keener is still down as far as the task is concerned", 1, log.state("vigil")!!.openCount)
     }
 
     @Test

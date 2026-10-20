@@ -114,8 +114,10 @@ class PuzzleTest {
             routes++
             if (presses.size <= 3) short++
         }
-        assertEquals("two routes through it: 0,2,4 and 1,2,3", 2, routes)
-        assertEquals("and both are three presses or fewer", 2, short)
+        assertEquals("two routes of three presses or fewer: 0,2,4 and 1,2,3", 2, short)
+        // 1,2,3,4 ends woken too: a litany that is whole stops listening, so the fourth press is
+        // refused rather than undoing anything. Three routes in all, then, of which two are short.
+        assertEquals("and a superset of a route, for that reason", 3, routes)
     }
 
     @Test
