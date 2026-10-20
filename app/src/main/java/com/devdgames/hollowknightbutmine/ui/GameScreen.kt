@@ -89,6 +89,16 @@ fun GameScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xAA243B48))
+                        .border(1.dp, Color(0x8897D8D8), RoundedCornerShape(8.dp))
+                        .clickable { gameViewRef?.world?.interact() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text("✧ Interact", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
                         .background(Color(0x88202432))
                         .border(1.dp, Color(0x66A0C0E0), RoundedCornerShape(8.dp))
                         .clickable { gameViewRef?.world?.toggleMap() }

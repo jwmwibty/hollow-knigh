@@ -10,7 +10,9 @@ import com.devdgames.hollowknightbutmine.game.combat.CombatMove
 import com.devdgames.hollowknightbutmine.game.combat.MoveSpec
 import com.devdgames.hollowknightbutmine.game.combat.PlayerCombat
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.max
 
 /**
  * Player Controller wielding a sword.
@@ -41,6 +43,9 @@ class Player(
     /** Health masks. Starts at 5; each boss victory adds one (see game/boss). */
     var maxMasks = 5
     var currentMasks = 5
+    /** Each visible mask contains two damage points. 1 means the current mask is cracked/half spent. */
+    var damageInCurrentMask = 0
+    private val damagePerMask = 2
     var soul = 33 // 0 to 100
     val maxSoul = 100
 
@@ -218,7 +223,18 @@ class Player(
     fun takeDamage(amount: Int = 1) {
         if (invincibilityTimer > 0f) return
 
-        currentMasks = (currentMasks - amount).coerceAtLeast(0)
+        var remainingDamage = amount.coerceAtLeast(0)
+        while (remainingDamage > 0 && currentMasks > 0) {
+            val needed = damagePerMask - damageInCurrentMask
+            if (remainingDamage >= needed) {
+                remainingDamage -= needed
+                currentMasks = (currentMasks - 1).coerceAtLeast(0)
+                damageInCurrentMask = 0
+            } else {
+                damageInCurrentMask += remainingDamage
+                remainingDamage = 0
+            }
+        }
         healHeld = false
         invincibilityTimer = 1.0f
         flashTimer = 0.3f
@@ -275,6 +291,7 @@ class Player(
                     if (soul >= 33 && currentMasks < maxMasks) {
                         soul -= 33
                         currentMasks++
+                        damageInCurrentMask = 0
                     }
                     healCharge = 0f
                     if (healHeld && soul >= 33 && currentMasks < maxMasks && isGrounded) {
@@ -512,44 +529,111 @@ class Player(
     }
 
     private fun drawLegsAndBoots(canvas: Canvas, paint: Paint, dir: Float, isFlashing: Boolean) {
-        paint.style = Paint.Style.FILL
+        // Each leg is a small two-joint rig: thigh angle, knee bend, ankle position,
+        // then a foot that follows the ankle. This is deliberately not one rigid rotating stick.
+        val phase = animationTime * 10f
+        val hipY = y - 27f
 
-        // Dark baggy charcoal ninja pants
-        paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
-        // Two-frame procedural stride: legs swing opposite each other while running.
-        val stride = if (state == PlayerState.RUNNING) sin(animationTime * 17f) * 6f else 0f
-        val doubleJumpTuck = if (doubleJumpBurstTimer > 0f) sin((doubleJumpBurstTimer / 0.24f) * Math.PI).toFloat() * 10f else 0f
-        val airborneTuck = when {
-            state == PlayerState.DASHING -> 6f
-            state == PlayerState.JUMPING && doubleJumpBurstTimer > 0f -> 12f + doubleJumpTuck
-            state == PlayerState.JUMPING -> 5f + sin(animationTime * 9f) * 1.5f
-            state == PlayerState.FALLING -> 2f
-            landingTimer > 0f -> -sin((landingTimer / 0.22f) * Math.PI).toFloat() * 3f
-            else -> 0f
-        }
-        // Legs pivot at the hips. Each boot follows its own leg so the feet never
-        // float separately while the running stride swings.
-        val leftLegX = x - 7f - stride
-        val rightLegX = x + 7f + stride
-        val leftFootY = y - 9f + airborneTuck
-        val rightFootY = y - 9f - airborneTuck
-        canvas.drawRoundRect(leftLegX - 4f, y - 27f + airborneTuck, leftLegX + 4f, leftFootY, 3.5f, 3.5f, paint)
-        canvas.drawRoundRect(rightLegX - 4f, y - 27f - airborneTuck, rightLegX + 4f, rightFootY, 3.5f, 3.5f, paint)
+        fun drawLeg(side: Int, nearSide: Boolean) {
+            val legPhase = phase + if (side > 0) Math.PI.toFloat() else 0f
+            val swing = sin(legPhase)
+            val kneeFold = max(0f, cos(legPhase))
+            var upperAngle: Float
+            var lowerAngle: Float
+            var footLift = 0f
 
-        // Chunky boots stay attached to the legs and sit directly on the floor.
-        paint.color = if (isFlashing) Color.WHITE else Color.rgb(22, 18, 22)
-        val footDir = dir * 3f
-        canvas.drawRoundRect(leftLegX - 6f + footDir, leftFootY - 2f, leftLegX + 5f + footDir, y + 1f, 4f, 4f, paint)
-        canvas.drawRoundRect(rightLegX - 5f + footDir, rightFootY - 2f, rightLegX + 6f + footDir, y + 1f, 4f, 4f, paint)
+            when (state) {
+                PlayerState.RUNNING -> {
+                    // Thigh drives the stride; the shin folds behind it during lift-off.
+                    upperAngle = dir * swing * 0.66f
+                    lowerAngle = upperAngle - dir * kneeFold * 0.82f
+                    footLift = kneeFold * 4.5f
+                }
+                PlayerState.JUMPING -> {
+                    // Tuck both knees, with a little asymmetry so the pose feels alive.
+                    upperAngle = dir * (side * 0.24f + 0.12f)
+                    val tuck = if (doubleJumpBurstTimer > 0f) 0.98f else 0.62f
+                    lowerAngle = upperAngle - dir * (tuck + if (side < 0) 0.12f else 0f)
+                    footLift = if (doubleJumpBurstTimer > 0f) 3.5f else 1.5f
+                }
+                PlayerState.FALLING -> {
+                    // Legs extend down, then relax slightly at the knees.
+                    upperAngle = dir * side * 0.17f
+                    lowerAngle = upperAngle - dir * 0.24f
+                }
+                PlayerState.DASHING -> {
+                    // Both legs stream behind the horizontal body, with bent knees.
+                    upperAngle = -dir * (0.82f + side * 0.05f)
+                    lowerAngle = upperAngle - dir * 0.48f
+                }
+                PlayerState.SLASHING, PlayerState.STABBING -> {
+                    // A planted, slightly staggered stance sells the weight behind sword attacks.
+                    upperAngle = dir * (if (side.toFloat() * dir > 0f) 0.24f else -0.18f)
+                    lowerAngle = upperAngle - dir * 0.2f
+                }
+                PlayerState.HURT -> {
+                    upperAngle = -dir * 0.24f + side * 0.08f
+                    lowerAngle = upperAngle + dir * 0.36f
+                }
+                else -> {
+                    // Idle / healing: relaxed feet, tiny outward stance, soft knee bend.
+                    upperAngle = dir * side * 0.09f
+                    lowerAngle = upperAngle - dir * 0.12f
+                }
+            }
 
-        // Boot leather strap cross-ties
-        if (!isFlashing) {
-            paint.color = Color.rgb(65, 55, 50)
-            paint.strokeWidth = 1.8f
+            val hipX = x + side * 4.5f
+            val upperLength = 10.5f
+            val lowerLength = 9.5f
+            val kneeX = hipX + sin(upperAngle) * upperLength
+            val kneeY = hipY + cos(upperAngle) * upperLength
+            val ankleX = kneeX + sin(lowerAngle) * lowerLength
+            val ankleY = kneeY + cos(lowerAngle) * lowerLength - footLift
+
+            // Far leg sits behind the near leg. Slight value separation gives the knee joint
+            // a readable shape without adding an outline-heavy, robotic hinge.
+            val legColor = when {
+                isFlashing -> Color.WHITE
+                nearSide -> Color.rgb(36, 33, 41)
+                else -> Color.rgb(27, 25, 32)
+            }
             paint.style = Paint.Style.STROKE
-            canvas.drawLine(leftLegX - 3f, leftFootY - 8f, leftLegX + 3f, leftFootY - 4f, paint)
-            canvas.drawLine(rightLegX - 3f, rightFootY - 8f, rightLegX + 3f, rightFootY - 4f, paint)
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.color = legColor
+            paint.strokeWidth = if (nearSide) 7.2f else 6.4f
+            canvas.drawLine(hipX, hipY, kneeX, kneeY, paint)
+            paint.strokeWidth = if (nearSide) 6.3f else 5.7f
+            canvas.drawLine(kneeX, kneeY, ankleX, ankleY, paint)
+
+            // Small knee joint blends the two segments while keeping the bend visible.
+            paint.style = Paint.Style.FILL
+            paint.color = legColor
+            canvas.drawCircle(kneeX, kneeY, if (nearSide) 3.1f else 2.7f, paint)
+
+            // Draw the boot in ankle-local coordinates. Mirroring the local foot means its toe
+            // always points the way the knight faces, while the ankle tilt stays subtle.
+            canvas.save()
+            canvas.translate(ankleX, ankleY)
+            canvas.scale(dir, 1f)
+            canvas.rotate(Math.toDegrees((lowerAngle * 0.22f).toDouble()).toFloat())
+            paint.style = Paint.Style.FILL
+            paint.color = if (isFlashing) Color.WHITE else Color.rgb(19, 17, 21)
+            val boot = RectF(-4.5f, -2.4f, 7.5f, 4.2f)
+            canvas.drawRoundRect(boot, 2.8f, 2.8f, paint)
+            if (!isFlashing) {
+                paint.style = Paint.Style.STROKE
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.strokeWidth = 1.2f
+                paint.color = if (nearSide) Color.rgb(91, 72, 57) else Color.rgb(65, 54, 47)
+                canvas.drawLine(-1f, 1.2f, 5f, 1.2f, paint)
+            }
+            canvas.restore()
         }
+
+        // Rear foot first, front foot second, so the steps overlap naturally.
+        drawLeg(side = -1, nearSide = false)
+        drawLeg(side = 1, nearSide = true)
+        paint.style = Paint.Style.FILL
     }
 
     private fun drawTorso(canvas: Canvas, paint: Paint, dir: Float, isFlashing: Boolean) {

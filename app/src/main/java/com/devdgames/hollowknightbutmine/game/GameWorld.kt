@@ -111,6 +111,7 @@ class GameWorld {
     private var currentBench: Bench? = null
     private val worldSpawnX: Float
     private val worldSpawnY: Float
+    private lateinit var storyArea: StoryArea
     private var lastSafeX = 0f
     private var lastSafeY = 0f
     private var safeTimer = 0f
@@ -171,6 +172,7 @@ class GameWorld {
         worldSpawnX = spawnScene.spawnX
         worldSpawnY = spawnScene.spawnY
         player = Player(x = worldSpawnX, y = worldSpawnY)
+        storyArea = StoryArea(worldSpawnX, worldSpawnY)
         lastSafeX = worldSpawnX
         lastSafeY = worldSpawnY
 
@@ -243,6 +245,7 @@ class GameWorld {
             if (bossProgress.isDefeated(spec.id)) player.maxMasks += spec.maskReward
         }
         player.currentMasks = player.maxMasks
+        player.damageInCurrentMask = 0
     }
 
     /** Benches bring the common fauna back; slain bosses stay slain. */
@@ -296,6 +299,22 @@ class GameWorld {
 
     fun toggleMap() {
         mapOpen = !mapOpen
+    }
+
+    /** Interact with nearby story spirits or the first rune puzzle. */
+    fun interact() {
+        if (!mapOpen && player.state != PlayerState.DEAD) storyArea.interact(player.x, player.y)
+    }
+
+    /** The heal control doubles as Interact, but only when a story object is in reach. */
+    fun startHealOrInteract() {
+        if (mapOpen || player.state == PlayerState.DEAD) return
+        if (storyArea.canInteract(player.x, player.y)) {
+            player.stopHeal()
+            storyArea.interact(player.x, player.y)
+        } else {
+            player.startHeal()
+        }
     }
 
     fun triggerShake(intensity: Float, duration: Float) {
@@ -364,6 +383,7 @@ class GameWorld {
         viewW = screenWidth / zoom
         viewH = DESIGN_VIEW_H
         gameTime += dt
+        storyArea.update(dt)
         if (mapOpen) return
 
         if (player.state == PlayerState.DEAD) {
@@ -777,6 +797,7 @@ class GameWorld {
             enemy.draw(canvas, paint)
         }
         for (proj in projectiles) proj.draw(canvas, paint)
+        storyArea.drawWorld(canvas, paint, gameTime, view)
         player.draw(canvas, paint)
         for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawLights(canvas, paint, view)
 
@@ -807,6 +828,7 @@ class GameWorld {
 
         // 4. screen-space UI
         drawHUD(canvas, paint, screenWidth, screenHeight)
+        storyArea.drawDialogue(canvas, paint, screenWidth, screenHeight)
         if (player.state == PlayerState.DEAD) drawDefeatedScreen(canvas, paint, screenWidth, screenHeight)
         if (mapOpen) {
             worldMap.draw(canvas, paint, screenWidth, screenHeight, gameTime, discovered, benches, player.x, player.y, currentScene?.def?.id)
@@ -976,6 +998,15 @@ class GameWorld {
                 paint.color = Color.rgb(15, 22, 31)
                 canvas.drawOval(mx - 5f, my - 1f, mx - 2f, my + 5f, paint)
                 canvas.drawOval(mx + 2f, my - 1f, mx + 5f, my + 5f, paint)
+                if (i == player.currentMasks - 1 && player.damageInCurrentMask > 0) {
+                    // A subtle crack marks the first of two damage points absorbed by this mask.
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 1.6f
+                    paint.color = Color.rgb(85, 105, 123)
+                    canvas.drawLine(mx + 1f, my - 11f, mx - 2f, my - 2f, paint)
+                    canvas.drawLine(mx - 2f, my - 2f, mx + 3f, my + 2f, paint)
+                    paint.style = Paint.Style.FILL
+                }
             } else {
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 2f

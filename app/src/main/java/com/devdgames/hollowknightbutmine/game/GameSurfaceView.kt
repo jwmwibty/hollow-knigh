@@ -57,7 +57,7 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 return true
             }
             KeyEvent.KEYCODE_E -> {
-                world.player.startHeal()
+                world.startHealOrInteract()
                 return true
             }
             KeyEvent.KEYCODE_J -> {
@@ -70,6 +70,10 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 if (event.repeatCount == 0) {
                     world.player.stab()
                 }
+                return true
+            }
+            KeyEvent.KEYCODE_F, KeyEvent.KEYCODE_ENTER -> {
+                if (event.repeatCount == 0) world.interact()
                 return true
             }
             KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_TAB -> {
