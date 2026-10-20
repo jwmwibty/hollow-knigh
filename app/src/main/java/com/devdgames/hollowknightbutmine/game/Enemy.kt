@@ -32,7 +32,7 @@ open class Enemy(
         EnemyType.BROODMOTHER -> 360
         EnemyType.OSSUARY_TITAN -> 480
         EnemyType.COLONNADE_KNIGHT -> 420
-        EnemyType.MOSS_CHARGER -> if (isBoss) 300 else 180
+        EnemyType.MOSS_CHARGER -> if (isBoss) 300 else 100
         EnemyType.SHIELDER -> 95
         EnemyType.RUNEWEAVER -> 65
         EnemyType.LURKER -> 55
@@ -176,7 +176,7 @@ open class Enemy(
 
         hp -= damage
         flashTimer = 0.15f
-        invincibilityTimer = 0.18f
+        invincibilityTimer = 0.10f // Keep hits distinct without swallowing fast follow-up attacks
         vx = knockbackX * kbFactor
         vy = knockbackY * kbFactor
         playEffect?.invoke()
