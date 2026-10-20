@@ -185,11 +185,11 @@ class PlayerCombat(
          */
         val DEFAULT_SLASH = MoveSpec(
             move = CombatMove.SLASH,
-            windup = 0.06f,
-            active = 0.09f,
-            recovery = 0.12f,
-            damage = 14,
-            reach = 66f,
+            windup = 0.045f,
+            active = 0.18f,
+            recovery = 0.11f,
+            damage = 24,
+            reach = 76f,
             boxTopFraction = 0.86f,
             boxBottomFraction = 0.12f,
             knockbackX = 120f,
@@ -205,11 +205,11 @@ class PlayerCombat(
          */
         val DEFAULT_THRUST = MoveSpec(
             move = CombatMove.THRUST,
-            windup = 0.08f,
-            active = 0.10f,
-            recovery = 0.13f,
-            damage = 18,
-            reach = 72f,
+            windup = 0.06f,
+            active = 0.20f,
+            recovery = 0.12f,
+            damage = 32,
+            reach = 86f,
             boxTopFraction = 0.75f,
             boxBottomFraction = 0.20f,
             knockbackX = 160f,

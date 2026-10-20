@@ -517,7 +517,7 @@ class Player(
         // Dark baggy charcoal ninja pants
         paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
         // Two-frame procedural stride: legs swing opposite each other while running.
-        val stride = if (state == PlayerState.RUNNING) sin(animationTime * 17f) * 6f else 0f
+        val stride = if (state == PlayerState.RUNNING) sin(animationTime * 10.5f) * 2.5f else 0f
         val doubleJumpTuck = if (doubleJumpBurstTimer > 0f) sin((doubleJumpBurstTimer / 0.24f) * Math.PI).toFloat() * 10f else 0f
         val airborneTuck = when {
             state == PlayerState.DASHING -> 6f
@@ -529,8 +529,8 @@ class Player(
         }
         // Legs pivot at the hips. Each boot follows its own leg so the feet never
         // float separately while the running stride swings.
-        val leftLegX = x - 7f - stride
-        val rightLegX = x + 7f + stride
+        val leftLegX = x - 5.5f - stride
+        val rightLegX = x + 5.5f + stride
         val leftFootY = y - 9f + airborneTuck
         val rightFootY = y - 9f - airborneTuck
         canvas.drawRoundRect(leftLegX - 4f, y - 27f + airborneTuck, leftLegX + 4f, leftFootY, 3.5f, 3.5f, paint)
@@ -694,17 +694,17 @@ class Player(
                         // Align the point at the target and draw the sword back.
                         val t = smooth(combat.phaseProgress)
                         angle = lerp(ready, THRUST_ANGLE, t)
-                        extend = -11f * t
+                        extend = -16f * t
                     }
                     AttackPhase.ACTIVE -> {
                         // Drive the point straight forward.
                         angle = THRUST_ANGLE
-                        extend = lerp(-11f, 21f, easeOut(combat.phaseProgress))
+                        extend = lerp(-16f, 30f, easeOut(combat.phaseProgress))
                     }
                     else -> {
                         val t = smooth(combat.phaseProgress)
                         angle = lerp(THRUST_ANGLE, ready, t)
-                        extend = lerp(21f, 0f, t)
+                        extend = lerp(30f, 0f, t)
                     }
                 }
             }
@@ -881,9 +881,9 @@ class Player(
 
     companion object {
         /** Blade angles in degrees around the hand; negative is up, matching Canvas.rotate. */
-        private const val SLASH_START = -122f  // raised back over the shoulder
-        private const val SLASH_END = 54f      // finished low and forward
-        private const val THRUST_ANGLE = -6f   // point level with the target
-        private const val ARC_RADIUS = 47f     // matches the blade length so the trail hugs it
+        private const val SLASH_START = -104f // compact shoulder load, not an exaggerated wind-up
+        private const val SLASH_END = 24f      // crisp diagonal cut across the target
+        private const val THRUST_ANGLE = -2f   // level, committed point-first thrust
+        private const val ARC_RADIUS = 47f     // keep the trail hugging the blade
     }
 }
