@@ -512,46 +512,77 @@ class Player(
     }
 
     private fun drawLegsAndBoots(canvas: Canvas, paint: Paint, dir: Float, isFlashing: Boolean) {
-        paint.style = Paint.Style.FILL
+        // Draw each leg and boot as one rotating limb around its hip.
+        // This avoids the old sliding-rectangle look where feet moved sideways without a knee/leg swing.
+        val running = state == PlayerState.RUNNING
+        val phase = animationTime * 10f
+        val strideAngle = if (running) sin(phase) * 0.22f else 0f
+        val leftAngle = when {
+            state == PlayerState.JUMPING -> -0.22f
+            state == PlayerState.FALLING -> 0.12f
+            state == PlayerState.DASHING -> 0.3f
+            running -> strideAngle
+            else -> 0f
+        }
+        val rightAngle = when {
+            state == PlayerState.JUMPING -> 0.22f
+            state == PlayerState.FALLING -> -0.12f
+            state == PlayerState.DASHING -> 0.3f
+            running -> -strideAngle
+            else -> 0f
+        }
 
-        // Dark baggy charcoal ninja pants
-        paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
-        // Compact alternating footfalls: keep the legs close to the body, not galloping.
-        val stride = if (state == PlayerState.RUNNING) sin(animationTime * 10f) * 1.8f else 0f
-        val leftStepLift = if (state == PlayerState.RUNNING) max(0f, sin(animationTime * 10f)) * 2f else 0f
-        val rightStepLift = if (state == PlayerState.RUNNING) max(0f, sin(animationTime * 10f + Math.PI.toFloat())) * 2f else 0f
-        val doubleJumpTuck = if (doubleJumpBurstTimer > 0f) sin((doubleJumpBurstTimer / 0.24f) * Math.PI).toFloat() * 10f else 0f
         val airborneTuck = when {
             state == PlayerState.DASHING -> 6f
-            state == PlayerState.JUMPING && doubleJumpBurstTimer > 0f -> 12f + doubleJumpTuck
+            state == PlayerState.JUMPING && doubleJumpBurstTimer > 0f ->
+                12f + sin((doubleJumpBurstTimer / 0.24f) * Math.PI).toFloat() * 10f
             state == PlayerState.JUMPING -> 5f + sin(animationTime * 9f) * 1.5f
             state == PlayerState.FALLING -> 2f
             landingTimer > 0f -> -sin((landingTimer / 0.22f) * Math.PI).toFloat() * 3f
             else -> 0f
         }
-        // Legs pivot at the hips. Each boot follows its own leg so the feet never
-        // float separately while the running stride swings.
-        val leftLegX = x - 4.5f - stride
-        val rightLegX = x + 4.5f + stride
-        val leftFootY = y - 9f + airborneTuck - leftStepLift
-        val rightFootY = y - 9f - airborneTuck - rightStepLift
-        canvas.drawRoundRect(leftLegX - 4f, y - 27f + airborneTuck, leftLegX + 4f, leftFootY, 3.5f, 3.5f, paint)
-        canvas.drawRoundRect(rightLegX - 4f, y - 27f - airborneTuck, rightLegX + 4f, rightFootY, 3.5f, 3.5f, paint)
 
-        // Chunky boots stay attached to the legs and sit directly on the floor.
-        paint.color = if (isFlashing) Color.WHITE else Color.rgb(22, 18, 22)
-        val footDir = dir * 3f
-        canvas.drawRoundRect(leftLegX - 6f + footDir, leftFootY - 2f, leftLegX + 5f + footDir, y + 1f, 4f, 4f, paint)
-        canvas.drawRoundRect(rightLegX - 5f + footDir, rightFootY - 2f, rightLegX + 6f + footDir, y + 1f, 4f, 4f, paint)
+        fun drawLeg(hipX: Float, angle: Float, side: Int, lift: Float) {
+            val hipY = y - 27f + airborneTuck
+            val legLength = 18f
+            val footLength = 12f
+            val footDir = dir * 2.5f
+            val kneeX = hipX + sin(angle) * legLength * 0.52f
+            val kneeY = hipY + cos(angle) * legLength * 0.52f
+            val ankleX = hipX + sin(angle) * legLength
+            val ankleY = hipY + cos(angle) * legLength - lift
 
-        // Boot leather strap cross-ties
-        if (!isFlashing) {
-            paint.color = Color.rgb(65, 55, 50)
-            paint.strokeWidth = 1.8f
             paint.style = Paint.Style.STROKE
-            canvas.drawLine(leftLegX - 3f, leftFootY - 8f, leftLegX + 3f, leftFootY - 4f, paint)
-            canvas.drawLine(rightLegX - 3f, rightFootY - 8f, rightLegX + 3f, rightFootY - 4f, paint)
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeWidth = 7.5f
+            paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
+            canvas.drawLine(hipX, hipY, kneeX, kneeY, paint)
+            canvas.drawLine(kneeX, kneeY, ankleX, ankleY, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.color = if (isFlashing) Color.WHITE else Color.rgb(22, 18, 22)
+            val boot = RectF(
+                ankleX - 5f + footDir,
+                ankleY - 3f,
+                ankleX + 5f + footDir,
+                ankleY + 4f
+            )
+            canvas.save()
+            canvas.rotate(Math.toDegrees(angle.toDouble()).toFloat() + dir * -4f, ankleX, ankleY)
+            canvas.drawRoundRect(boot, 3.5f, 3.5f, paint)
+            if (!isFlashing) {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 1.4f
+                paint.color = Color.rgb(65, 55, 50)
+                canvas.drawLine(ankleX - 2f + footDir, ankleY - 1f, ankleX + 2f + footDir, ankleY + 1f, paint)
+            }
+            canvas.restore()
         }
+
+        // Slightly offset hips create a readable silhouette; legs rotate in opposite phases.
+        drawLeg(x - 4.5f, leftAngle, -1, if (running) max(0f, sin(phase)) * 2f else 0f)
+        drawLeg(x + 4.5f, rightAngle, 1, if (running) max(0f, sin(phase + Math.PI.toFloat())) * 2f else 0f)
+        paint.style = Paint.Style.FILL
     }
 
     private fun drawTorso(canvas: Canvas, paint: Paint, dir: Float, isFlashing: Boolean) {
