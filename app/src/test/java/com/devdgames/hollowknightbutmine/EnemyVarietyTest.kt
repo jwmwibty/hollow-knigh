@@ -99,6 +99,22 @@ class EnemyVarietyTest {
     }
 
     @Test
+    fun `moss charger is durable but fair and can be hit again after short immunity`() {
+        val charger = Enemy(100f, 300f, type = EnemyType.MOSS_CHARGER)
+        assertEquals(100, charger.maxHp)
+        assertEquals(100, charger.hp)
+
+        charger.takeDamage(20)
+        assertEquals(80, charger.hp)
+        assertTrue("a confirmed hit should briefly protect against duplicate frame hits", charger.invincibilityTimer > 0f)
+
+        // Once the short hit-immunity window has elapsed, a separate attack may connect.
+        charger.update(0.11f, playerX = 10000f, playerY = 300f, platforms = emptyList())
+        charger.takeDamage(20)
+        assertEquals("a follow-up should damage the charger after its brief immunity", 60, charger.hp)
+    }
+
+    @Test
     fun `runeweaver retreats when player is close and fires 3-shot arc when ready`() {
         val runeweaver = Enemy(400f, 300f, type = EnemyType.RUNEWEAVER)
         runeweaver.attackCooldown = 0f
