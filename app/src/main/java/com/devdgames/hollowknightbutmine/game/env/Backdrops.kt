@@ -54,6 +54,20 @@ object Backdrops {
         canvas.drawRect(0f, 0f, viewW, viewH, paint)
         paint.shader = null
 
+        // A restrained, deterministic grain pass breaks up visible gradient banding without
+        // using a bitmap, a runtime shader, or per-frame random allocations. The grain is
+        // intentionally very faint so it reads as atmosphere rather than dirty pixels.
+        canvas.save()
+        val grain = Random(7331)
+        for (i in 0 until 420) {
+            val gx = grain.nextFloat() * viewW
+            val gy = grain.nextFloat() * viewH
+            val alpha = 3 + grain.nextInt(8)
+            paint.color = Color.argb(alpha, 205, 220, 238)
+            canvas.drawRect(gx, gy, gx + 1.2f, gy + 1.2f, paint)
+        }
+        canvas.restore()
+
         if (openSky) {
             // Moon and a scatter of fixed stars that barely move with the camera.
             val ox = camX * 0.02f
@@ -307,11 +321,28 @@ object Backdrops {
                     canvas.drawRect(bx - w / 2, -h, bx + w / 2, 10f, paint)
                     path.reset(); path.moveTo(bx - w / 2 - 6f, -h); path.lineTo(bx, -h - 30f - r.nextFloat() * 30f); path.lineTo(bx + w / 2 + 6f, -h); path.close()
                     canvas.drawPath(path, paint)
-                    if (r.nextFloat() < 0.5f) {
-                        paint.color = Color.argb(150, 255, 200, 120)
-                        canvas.drawRect(bx - 4f, -h * 0.6f, bx + 4f, -h * 0.6f + 9f, paint)
-                        paint.color = pal.mid
+
+                    // Architectural edge work makes the town read as built, not as blocks.
+                    val facade = paint.color
+                    paint.color = Color.argb(95, 180, 194, 211)
+                    canvas.drawRect(bx - w / 2 + 3f, -h + 5f, bx - w / 2 + 5f, 4f, paint)
+                    canvas.drawRect(bx + w / 2 - 5f, -h + 5f, bx + w / 2 - 3f, 4f, paint)
+                    canvas.drawRect(bx - w / 2 - 2f, -h + 3f, bx + w / 2 + 2f, -h + 6f, paint)
+                    paint.color = Color.argb(115, 4, 8, 15)
+                    val doorW = (w * 0.18f).coerceAtLeast(5f)
+                    canvas.drawRoundRect(bx - doorW, -h * 0.34f, bx + doorW, 8f, 2f, 2f, paint)
+
+                    // A warm window has a soft halo and a darker inset, not a flat yellow pixel.
+                    if (r.nextFloat() < 0.72f) {
+                        val wx = bx + (r.nextFloat() - 0.5f) * w * 0.42f
+                        val wy = -h * (0.48f + r.nextFloat() * 0.18f)
+                        EnvArt.bloom(canvas, paint, wx, wy + 4f, 34f, 30f, EnvArt.glowWarm, 34)
+                        paint.color = Color.argb(220, 255, 207, 133)
+                        canvas.drawRect(wx - 4f, wy, wx + 4f, wy + 9f, paint)
+                        paint.color = Color.argb(150, 255, 240, 204)
+                        canvas.drawRect(wx - 1f, wy + 1f, wx + 1f, wy + 8f, paint)
                     }
+                    paint.color = facade
                 } else {
                     paint.style = Paint.Style.STROKE
                     paint.strokeWidth = 4f
