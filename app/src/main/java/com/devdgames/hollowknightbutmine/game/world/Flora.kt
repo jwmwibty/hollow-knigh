@@ -175,8 +175,8 @@ object Flora {
         spores = 0f, sway = 0.05f
     )
     private val town = FloraProfile(
-        coverage = 0.58f, patch = 105f, spacingMin = 12f, spacingMax = 27f, clumpMin = 3, clumpMax = 5,
-        hMin = 16f, hMax = 34f, wMin = 2.4f, wMax = 4.2f, tall = 0.25f, tallScale = 1.6f, wind = 0.2f,
+        coverage = 0.64f, patch = 105f, spacingMin = 10f, spacingMax = 23f, clumpMin = 3, clumpMax = 5,
+        hMin = 22f, hMax = 40f, wMin = 2.8f, wMax = 4.6f, tall = 0.28f, tallScale = 1.65f, wind = 0.2f,
         cushions = 0.25f, moss = 0.25f, roots = 0f, sprouts = 0.15f, flowers = 0.12f, ferns = 0f, reeds = 0f,
         spores = 0f, sway = 0.05f
     )
@@ -410,7 +410,7 @@ object Flora {
         if (d > 0.35f) {
             val u = r.int(1, 3)
             for (i in 0 until u) {
-                val h = r.range(3f, 6.5f) * scale
+                val h = r.range(7f, 11f) * scale
                 val lean = r.range(-0.35f, 0.35f) * h
                 out.add(Blade((x + r.range(-10f, 10f)).coerceIn(lo, hi), h, r.range(2.2f, 3.2f), lean, lean * 0.4f, 0))
             }
