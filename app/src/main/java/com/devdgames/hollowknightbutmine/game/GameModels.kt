@@ -23,7 +23,7 @@ enum class PlayerState {
     JUMPING,
     FALLING,
     DASHING,
-    SLASHING,      // Light attack: sword slash through a wide arc
+    SLASHING,      // Slash, rising cut, or aerial downstrike animation
     STABBING,      // Committed forward thrust with the sword's point
     HEALING,       // Focus soul / silk to restore HP
     HURT,
