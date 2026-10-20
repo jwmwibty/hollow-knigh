@@ -10,7 +10,9 @@ import com.devdgames.hollowknightbutmine.game.combat.CombatMove
 import com.devdgames.hollowknightbutmine.game.combat.MoveSpec
 import com.devdgames.hollowknightbutmine.game.combat.PlayerCombat
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.max
 
 /**
  * Player Controller wielding a sword.
@@ -512,76 +514,111 @@ class Player(
     }
 
     private fun drawLegsAndBoots(canvas: Canvas, paint: Paint, dir: Float, isFlashing: Boolean) {
-        // Draw each leg and boot as one rotating limb around its hip.
-        // This avoids the old sliding-rectangle look where feet moved sideways without a knee/leg swing.
+        // Each leg is a small two-joint rig: thigh angle, knee bend, ankle position,
+        // then a foot that follows the ankle. This is deliberately not one rigid rotating stick.
         val running = state == PlayerState.RUNNING
         val phase = animationTime * 10f
-        val strideAngle = if (running) sin(phase) * 0.22f else 0f
-        val leftAngle = when {
-            state == PlayerState.JUMPING -> -0.22f
-            state == PlayerState.FALLING -> 0.12f
-            state == PlayerState.DASHING -> 0.3f
-            running -> strideAngle
-            else -> 0f
-        }
-        val rightAngle = when {
-            state == PlayerState.JUMPING -> 0.22f
-            state == PlayerState.FALLING -> -0.12f
-            state == PlayerState.DASHING -> 0.3f
-            running -> -strideAngle
-            else -> 0f
-        }
+        val hipY = y - 27f
 
-        val airborneTuck = when {
-            state == PlayerState.DASHING -> 6f
-            state == PlayerState.JUMPING && doubleJumpBurstTimer > 0f ->
-                12f + sin((doubleJumpBurstTimer / 0.24f) * Math.PI).toFloat() * 10f
-            state == PlayerState.JUMPING -> 5f + sin(animationTime * 9f) * 1.5f
-            state == PlayerState.FALLING -> 2f
-            landingTimer > 0f -> -sin((landingTimer / 0.22f) * Math.PI).toFloat() * 3f
-            else -> 0f
-        }
+        fun drawLeg(side: Int, nearSide: Boolean) {
+            val legPhase = phase + if (side > 0) Math.PI.toFloat() else 0f
+            val swing = sin(legPhase)
+            val kneeFold = max(0f, cos(legPhase))
+            var upperAngle: Float
+            var lowerAngle: Float
+            var footLift = 0f
 
-        fun drawLeg(hipX: Float, angle: Float, side: Int, lift: Float) {
-            val hipY = y - 27f + airborneTuck
-            val legLength = 18f
-            val footLength = 12f
-            val footDir = dir * 2.5f
-            val kneeX = hipX + sin(angle) * legLength * 0.52f
-            val kneeY = hipY + cos(angle) * legLength * 0.52f
-            val ankleX = hipX + sin(angle) * legLength
-            val ankleY = hipY + cos(angle) * legLength - lift
+            when (state) {
+                PlayerState.RUNNING -> {
+                    // Thigh drives the stride; the shin folds behind it during lift-off.
+                    upperAngle = dir * swing * 0.66f
+                    lowerAngle = upperAngle - dir * kneeFold * 0.82f
+                    footLift = kneeFold * 4.5f
+                }
+                PlayerState.JUMPING -> {
+                    // Tuck both knees, with a little asymmetry so the pose feels alive.
+                    upperAngle = dir * (side * 0.24f + 0.12f)
+                    val tuck = if (doubleJumpBurstTimer > 0f) 0.98f else 0.62f
+                    lowerAngle = upperAngle - dir * (tuck + if (side < 0) 0.12f else 0f)
+                    footLift = if (doubleJumpBurstTimer > 0f) 3.5f else 1.5f
+                }
+                PlayerState.FALLING -> {
+                    // Legs extend down, then relax slightly at the knees.
+                    upperAngle = dir * side * 0.17f
+                    lowerAngle = upperAngle - dir * 0.24f
+                }
+                PlayerState.DASHING -> {
+                    // Both legs stream behind the horizontal body, with bent knees.
+                    upperAngle = -dir * (0.82f + side * 0.05f)
+                    lowerAngle = upperAngle - dir * 0.48f
+                }
+                PlayerState.SLASHING, PlayerState.STABBING -> {
+                    // A planted, slightly staggered stance sells the weight behind sword attacks.
+                    upperAngle = dir * if (side.toFloat() * dir > 0f) 0.24f else -0.18f
+                    lowerAngle = upperAngle - dir * 0.2f
+                }
+                PlayerState.HURT -> {
+                    upperAngle = -dir * 0.24f + side * 0.08f
+                    lowerAngle = upperAngle + dir * 0.36f
+                }
+                else -> {
+                    // Idle / healing: relaxed feet, tiny outward stance, soft knee bend.
+                    upperAngle = dir * side * 0.09f
+                    lowerAngle = upperAngle - dir * 0.12f
+                }
+            }
 
+            val hipX = x + side * 4.5f
+            val upperLength = 10.5f
+            val lowerLength = 9.5f
+            val kneeX = hipX + sin(upperAngle) * upperLength
+            val kneeY = hipY + cos(upperAngle) * upperLength
+            val ankleX = kneeX + sin(lowerAngle) * lowerLength
+            val ankleY = kneeY + cos(lowerAngle) * lowerLength - footLift
+
+            // Far leg sits behind the near leg. Slight value separation gives the knee joint
+            // a readable shape without adding an outline-heavy, robotic hinge.
+            val legColor = when {
+                isFlashing -> Color.WHITE
+                nearSide -> Color.rgb(36, 33, 41)
+                else -> Color.rgb(27, 25, 32)
+            }
             paint.style = Paint.Style.STROKE
             paint.strokeCap = Paint.Cap.ROUND
-            paint.strokeWidth = 7.5f
-            paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
+            paint.color = legColor
+            paint.strokeWidth = if (nearSide) 7.2f else 6.4f
             canvas.drawLine(hipX, hipY, kneeX, kneeY, paint)
+            paint.strokeWidth = if (nearSide) 6.3f else 5.7f
             canvas.drawLine(kneeX, kneeY, ankleX, ankleY, paint)
 
+            // Small knee joint blends the two segments while keeping the bend visible.
             paint.style = Paint.Style.FILL
-            paint.color = if (isFlashing) Color.WHITE else Color.rgb(22, 18, 22)
-            val boot = RectF(
-                ankleX - 5f + footDir,
-                ankleY - 3f,
-                ankleX + 5f + footDir,
-                ankleY + 4f
-            )
+            paint.color = legColor
+            canvas.drawCircle(kneeX, kneeY, if (nearSide) 3.1f else 2.7f, paint)
+
+            // Draw the boot in ankle-local coordinates. Mirroring the local foot means its toe
+            // always points the way the knight faces, while the ankle tilt stays subtle.
             canvas.save()
-            canvas.rotate(Math.toDegrees(angle.toDouble()).toFloat() + dir * -4f, ankleX, ankleY)
-            canvas.drawRoundRect(boot, 3.5f, 3.5f, paint)
+            canvas.translate(ankleX, ankleY)
+            canvas.scale(dir, 1f)
+            canvas.rotate(Math.toDegrees((lowerAngle * 0.22f).toDouble()).toFloat())
+            paint.style = Paint.Style.FILL
+            paint.color = if (isFlashing) Color.WHITE else Color.rgb(19, 17, 21)
+            val boot = RectF(-4.5f, -2.4f, 7.5f, 4.2f)
+            canvas.drawRoundRect(boot, 2.8f, 2.8f, paint)
             if (!isFlashing) {
                 paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 1.4f
-                paint.color = Color.rgb(65, 55, 50)
-                canvas.drawLine(ankleX - 2f + footDir, ankleY - 1f, ankleX + 2f + footDir, ankleY + 1f, paint)
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.strokeWidth = 1.2f
+                paint.color = if (nearSide) Color.rgb(91, 72, 57) else Color.rgb(65, 54, 47)
+                canvas.drawLine(-1f, 1.2f, 5f, 1.2f, paint)
             }
             canvas.restore()
         }
 
-        // Slightly offset hips create a readable silhouette; legs rotate in opposite phases.
-        drawLeg(x - 4.5f, leftAngle, -1, if (running) max(0f, sin(phase)) * 2f else 0f)
-        drawLeg(x + 4.5f, rightAngle, 1, if (running) max(0f, sin(phase + Math.PI.toFloat())) * 2f else 0f)
+        // Rear foot first, front foot second, so the steps overlap naturally.
+        drawLeg(side = -1, nearSide = false)
+        drawLeg(side = 1, nearSide = true)
         paint.style = Paint.Style.FILL
     }
 
