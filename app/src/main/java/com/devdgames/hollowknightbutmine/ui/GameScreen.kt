@@ -215,33 +215,46 @@ fun CombatActionButtons(
             )
         }
 
-        // Bottom Row: Jump + Light attack (slash) + Stab
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            // Jump
-            ActionButton(
-                label = "jump",
-                subLabel = "JUMP",
-                size = 64.dp,
-                accentColor = Color(0xFFAED581),
-                onClick = { gameView?.world?.player?.jump() }
-            )
-
-            // Light attack: the quick sword slash. This is the primary attack button.
+        // Primary sword pair: fast horizontal slash and long-reaching thrust.
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ActionButton(
                 label = "slash",
                 subLabel = "SLASH",
-                size = 68.dp,
+                size = 66.dp,
                 accentColor = Color(0xFFE0E0E0),
                 onClick = { gameView?.world?.player?.slash() }
             )
-
-            // Stab: the committed forward thrust with the point.
             ActionButton(
                 label = "stab",
-                subLabel = "STAB",
+                subLabel = "THRUST",
                 size = 64.dp,
                 accentColor = Color(0xFFFFD54F),
                 onClick = { gameView?.world?.player?.stab() }
+            )
+        }
+
+        // Mobility and directional sword techniques.
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ActionButton(
+                label = "jump",
+                subLabel = "JUMP",
+                size = 56.dp,
+                accentColor = Color(0xFFAED581),
+                onClick = { gameView?.world?.player?.jump() }
+            )
+            ActionButton(
+                label = "rise",
+                subLabel = "RISE",
+                size = 56.dp,
+                accentColor = Color(0xFF80CBC4),
+                onClick = { gameView?.world?.player?.risingCut() }
+            )
+            ActionButton(
+                label = "pogo",
+                subLabel = "POGO",
+                size = 56.dp,
+                accentColor = Color(0xFFFFAB91),
+                onClick = { gameView?.world?.player?.downstrike() }
             )
         }
     }
@@ -290,7 +303,14 @@ fun ActionButton(
                 tint = if (isPressed) accentColor else Color(0xFFEAF1F7),
                 modifier = Modifier.size(size * 0.43f)
             )
-            // Icon-only controls: keep the button face clean and readable.
+            Text(
+                text = subLabel,
+                fontSize = 8.sp,
+                lineHeight = 9.sp,
+                color = if (isPressed) accentColor else Color(0xFFEAF1F7),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
         }
     }
 }
@@ -342,7 +362,14 @@ fun ControlButton(
                 tint = if (effectivePressed) accentColor else Color(0xFFEAF1F7),
                 modifier = Modifier.size(size * 0.43f)
             )
-            // Icon-only controls: keep the button face clean and readable.
+            Text(
+                text = subLabel,
+                fontSize = 8.sp,
+                lineHeight = 9.sp,
+                color = if (effectivePressed) accentColor else Color(0xFFEAF1F7),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
         }
     }
 }
@@ -395,6 +422,18 @@ private fun ControlGlyph(name: String, tint: Color, modifier: Modifier = Modifie
                 line(w * .32f, h * .32f, w * .32f, h * .64f, w * .09f)
                 line(w * .12f, h * .48f, w * .27f, h * .48f, w * .09f)
                 line(w * .56f, h * .74f, w * .86f, h * .74f, w * .06f)
+            }
+            "rise" -> {
+                // Upward cut: blade rises into the air.
+                line(w * .34f, h * .72f, w * .70f, h * .20f, w * .12f)
+                line(w * .24f, h * .54f, w * .46f, h * .70f, w * .09f)
+                path(listOf(.54f to .38f, .70f to .18f, .73f to .48f), close = false)
+            }
+            "pogo" -> {
+                // Downward blade and rebound arrow.
+                line(w * .50f, h * .14f, w * .50f, h * .72f, w * .12f)
+                path(listOf(.28f to .55f, .50f to .82f, .72f to .55f), close = false)
+                line(w * .20f, h * .24f, w * .80f, h * .24f, w * .07f)
             }
             "dash" -> {
                 line(w * .08f, h * .30f, w * .56f, h * .30f, w * .09f)
