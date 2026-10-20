@@ -59,7 +59,7 @@ class PlayerCombatTest {
         for (gone in removed) {
             assertFalse("PlayerState still contains $gone", names.contains(gone))
         }
-        // The two attacks each own a state, so the animation layer can tell them apart.
+        // The move model has four attacks; the animation layer groups cuts and thrusts into two poses.
         assertTrue(names.contains("SLASHING"))
         assertTrue(names.contains("STABBING"))
     }
