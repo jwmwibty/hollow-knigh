@@ -151,8 +151,8 @@ object Flora {
     private val NO_KEEP_OUT = FloatArray(0)
 
     private val green = FloraProfile(
-        coverage = 0.82f, patch = 110f, spacingMin = 9f, spacingMax = 22f, clumpMin = 3, clumpMax = 6,
-        hMin = 6f, hMax = 15f, wMin = 2.2f, wMax = 4.2f, tall = 0.22f, tallScale = 1.75f, wind = 0f,
+        coverage = 0.90f, patch = 125f, spacingMin = 7f, spacingMax = 16f, clumpMin = 4, clumpMax = 7,
+        hMin = 20f, hMax = 46f, wMin = 2.8f, wMax = 5.0f, tall = 0.28f, tallScale = 1.7f, wind = 0f,
         cushions = 0.9f, moss = 1f, roots = 1.3f, sprouts = 0.25f, flowers = 0.18f, ferns = 0.1f, reeds = 0f,
         spores = 0f, sway = 0.045f
     )
