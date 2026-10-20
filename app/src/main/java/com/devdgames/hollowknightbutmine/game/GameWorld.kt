@@ -820,7 +820,7 @@ class GameWorld {
 
         // 4. screen-space UI
         drawHUD(canvas, paint, screenWidth, screenHeight)
-        storyArea.drawDialogue(canvas, paint, screenWidth / zoom, screenHeight / zoom)
+        storyArea.drawDialogue(canvas, paint, screenWidth, screenHeight)
         if (player.state == PlayerState.DEAD) drawDefeatedScreen(canvas, paint, screenWidth, screenHeight)
         if (mapOpen) {
             worldMap.draw(canvas, paint, screenWidth, screenHeight, gameTime, discovered, benches, player.x, player.y, currentScene?.def?.id)
