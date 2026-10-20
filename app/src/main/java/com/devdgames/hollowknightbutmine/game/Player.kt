@@ -694,17 +694,17 @@ class Player(
                         // Align the point at the target and draw the sword back.
                         val t = smooth(combat.phaseProgress)
                         angle = lerp(ready, THRUST_ANGLE, t)
-                        extend = -11f * t
+                        extend = -16f * t
                     }
                     AttackPhase.ACTIVE -> {
                         // Drive the point straight forward.
                         angle = THRUST_ANGLE
-                        extend = lerp(-11f, 21f, easeOut(combat.phaseProgress))
+                        extend = lerp(-16f, 30f, easeOut(combat.phaseProgress))
                     }
                     else -> {
                         val t = smooth(combat.phaseProgress)
                         angle = lerp(THRUST_ANGLE, ready, t)
-                        extend = lerp(21f, 0f, t)
+                        extend = lerp(30f, 0f, t)
                     }
                 }
             }
