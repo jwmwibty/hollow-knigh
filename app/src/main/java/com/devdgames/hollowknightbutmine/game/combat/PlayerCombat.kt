@@ -4,16 +4,21 @@ package com.devdgames.hollowknightbutmine.game.combat
  * The player's whole combat move set, with no Android types, so the timings, damage and
  * hitbox windows can be unit-tested on the JVM exactly as the game runs them.
  *
- * There are deliberately only two attacks: a light slash and a committed thrust. There is
- * no grab, no headbutt, no parry and no block anywhere in this model, and [CombatMove] is
- * the single list the input layer is allowed to trigger.
+ * The four-move sword kit is a quick slash, a committed thrust, a rising cut for aerial
+ * targets, and an aerial downstrike that can bounce the knight off a successful hit.
  */
 enum class CombatMove {
-    /** Light attack: a quick sword slash that sweeps a wide, short arc. */
+    /** Fast horizontal cut; the dependable all-purpose attack. */
     SLASH,
 
-    /** The other core move: a straight forward thrust with the point of the sword. */
-    THRUST
+    /** A committed, long-reaching point-first thrust. */
+    THRUST,
+
+    /** A rising cut for enemies above or close to the knight. */
+    RISING_CUT,
+
+    /** Air-only downward strike; landing a hit rebounds the knight upward. */
+    DOWNSTRIKE
 }
 
 /** Where an attack is in its own timeline. The blade only hurts during [ACTIVE]. */
@@ -52,7 +57,9 @@ data class MoveSpec(
  */
 class PlayerCombat(
     private val slashSpec: MoveSpec = DEFAULT_SLASH,
-    private val thrustSpec: MoveSpec = DEFAULT_THRUST
+    private val thrustSpec: MoveSpec = DEFAULT_THRUST,
+    private val risingCutSpec: MoveSpec = DEFAULT_RISING_CUT,
+    private val downstrikeSpec: MoveSpec = DEFAULT_DOWNSTRIKE
 ) {
 
     /** The attack currently playing, or null while the player is free. */
@@ -86,7 +93,12 @@ class PlayerCombat(
     /** The spec of the attack in progress, or null while idle. */
     val currentSpec: MoveSpec? get() = spec
 
-    fun specFor(move: CombatMove): MoveSpec = if (move == CombatMove.SLASH) slashSpec else thrustSpec
+    fun specFor(move: CombatMove): MoveSpec = when (move) {
+        CombatMove.SLASH -> slashSpec
+        CombatMove.THRUST -> thrustSpec
+        CombatMove.RISING_CUT -> risingCutSpec
+        CombatMove.DOWNSTRIKE -> downstrikeSpec
+    }
 
     /**
      * An attack may be started from rest, or by cancelling the recovery tail of the previous
@@ -206,16 +218,48 @@ class PlayerCombat(
         val DEFAULT_THRUST = MoveSpec(
             move = CombatMove.THRUST,
             windup = 0.08f,
-            active = 0.10f,
-            recovery = 0.13f,
-            damage = 18,
-            reach = 72f,
+            active = 0.12f,
+            recovery = 0.16f,
+            damage = 20,
+            reach = 84f,
             boxTopFraction = 0.75f,
             boxBottomFraction = 0.20f,
-            knockbackX = 160f,
-            knockbackY = -80f,
+            knockbackX = 180f,
+            knockbackY = -90f,
             soulGain = 11,
-            travelScale = 0.75f
+            travelScale = 0.72f
+        )
+
+        /** A vertical attack that trades horizontal mobility for reliable anti-air coverage. */
+        val DEFAULT_RISING_CUT = MoveSpec(
+            move = CombatMove.RISING_CUT,
+            windup = 0.08f,
+            active = 0.14f,
+            recovery = 0.17f,
+            damage = 17,
+            reach = 62f,
+            boxTopFraction = 1.28f,
+            boxBottomFraction = 0.42f,
+            knockbackX = 90f,
+            knockbackY = -250f,
+            soulGain = 10,
+            travelScale = 0.50f
+        )
+
+        /** A committed aerial strike; the reward is a bounce only when the hit really lands. */
+        val DEFAULT_DOWNSTRIKE = MoveSpec(
+            move = CombatMove.DOWNSTRIKE,
+            windup = 0.04f,
+            active = 0.16f,
+            recovery = 0.18f,
+            damage = 20,
+            reach = 58f,
+            boxTopFraction = 0.08f,
+            boxBottomFraction = 0.92f,
+            knockbackX = 90f,
+            knockbackY = 240f,
+            soulGain = 12,
+            travelScale = 0.35f
         )
     }
 }
