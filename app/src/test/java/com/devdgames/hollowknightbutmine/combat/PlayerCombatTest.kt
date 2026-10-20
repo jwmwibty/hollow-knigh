@@ -15,16 +15,22 @@ import org.junit.Test
 /**
  * The player's whole combat move set, tested against the same model [Player] drives at 60 fps.
  *
- * Covers the acceptance rules for the weapon redesign: only a light attack and a stab exist,
- * each plays anticipation -> strike -> short recovery, the blade only hurts during the strike,
- * and no grab, parry, block or headbutt survives anywhere in the model or the player's states.
+ * Covers the four-move sword kit: each move plays anticipation -> strike -> short recovery,
+ * the blade only hurts during the strike, and no grab, parry, block or headbutt is part of the kit.
  */
 class PlayerCombatTest {
     private val dt = 1f / 60f
 
     private val slash = PlayerCombat.DEFAULT_SLASH
     private val thrust = PlayerCombat.DEFAULT_THRUST
-    private val specs: List<Pair<String, MoveSpec>> = listOf("slash" to slash, "thrust" to thrust)
+    private val risingCut = PlayerCombat.DEFAULT_RISING_CUT
+    private val downstrike = PlayerCombat.DEFAULT_DOWNSTRIKE
+    private val specs: List<Pair<String, MoveSpec>> = listOf(
+        "slash" to slash,
+        "thrust" to thrust,
+        "rising cut" to risingCut,
+        "downstrike" to downstrike
+    )
 
     /** Steps [c] forward by [seconds] at a fixed frame rate. */
     private fun run(c: PlayerCombat, seconds: Float) {
@@ -35,12 +41,15 @@ class PlayerCombatTest {
         }
     }
 
-    // ---- the move set is exactly two attacks ------------------------------------------
+    // ---- move set -----------------------------------------------------------------------
 
     @Test
-    fun `the combat move set is only a slash and a thrust`() {
-        assertEquals(listOf(CombatMove.SLASH, CombatMove.THRUST), CombatMove.values().toList())
-        assertEquals(2, CombatMove.values().size)
+    fun `the combat move set has four distinct sword attacks`() {
+        assertEquals(
+            listOf(CombatMove.SLASH, CombatMove.THRUST, CombatMove.RISING_CUT, CombatMove.DOWNSTRIKE),
+            CombatMove.values().toList()
+        )
+        assertEquals(4, CombatMove.values().size)
     }
 
     @Test
@@ -229,20 +238,23 @@ class PlayerCombatTest {
     // ---- damage and hitbox numbers -------------------------------------------------------
 
     @Test
-    fun `both attacks deal damage and the thrust is the heavier of the two`() {
+    fun `all four attacks deal damage and keep different combat identities`() {
         for ((name, spec) in specs) assertTrue("$name must deal damage", spec.damage > 0)
         assertTrue("the thrust should out-damage the light attack", thrust.damage > slash.damage)
         assertTrue("the thrust should reach further", thrust.reach > slash.reach)
         assertTrue("the light attack should swing wider", slash.reach > 0f && slash.boxTopFraction > thrust.boxTopFraction)
+        assertTrue("the rising cut should launch targets upward", risingCut.knockbackY < 0f)
+        assertTrue("the downstrike should slam targets downward", downstrike.knockbackY > 0f)
+        assertTrue("the downstrike is the strongest base hit", downstrike.damage >= thrust.damage)
     }
 
     @Test
-    fun `the hitbox is a real box in front of the player`() {
+    fun `all move specs provide valid hitbox metadata`() {
         for ((name, spec) in specs) {
             assertTrue("$name reach", spec.reach > 0f)
-            assertTrue("$name box top must be above the box bottom", spec.boxTopFraction > spec.boxBottomFraction)
-            assertTrue("$name box top within the body", spec.boxTopFraction <= 1f)
-            assertTrue("$name box bottom off the floor", spec.boxBottomFraction >= 0f)
+            assertTrue("$name top fraction must be above bottom fraction", spec.boxTopFraction > spec.boxBottomFraction)
+            assertTrue("$name top fraction within body metadata", spec.boxTopFraction <= 1f)
+            assertTrue("$name bottom fraction off the floor", spec.boxBottomFraction >= 0f)
             assertTrue("$name knocks the target away", spec.knockbackX > 0f)
             assertTrue("$name soul gain", spec.soulGain > 0)
             assertTrue("$name keeps some movement", spec.travelScale in 0.1f..1f)
