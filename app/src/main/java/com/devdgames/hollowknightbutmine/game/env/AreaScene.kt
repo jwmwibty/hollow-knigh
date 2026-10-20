@@ -76,6 +76,13 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
     private val drips = ArrayList<FloatArray>()  // x, y, phase
     private val shafts = ArrayList<Pair<LightShaft, RectF>>()
 
+    /** Breakable, biome-tinted ground cover along every walkable rim. */
+    val grassPatches = ArrayList<GrassPatch>()
+    /** Floating spores / dust motes that give the air some depth. */
+    private val motes = ArrayList<FloatArray>()   // x, y, phase, radius, warm
+    /** Soft contact shadow cast into the air below each overhang. */
+    private val bottomShades = ArrayList<Band>()
+
     private val rnd = Random(def.id.hashCode())
     private val scratch = Path()
 
@@ -85,6 +92,8 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         buildLedges()
         buildHazards()
         buildMarkers()
+        buildGrass()
+        buildMotes()
     }
 
     // ===================================================================== building
@@ -155,6 +164,13 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
             val x1 = (run.col + run.length) * T
             val y = (run.row + 1) * T
             bottomRims.add(RectF(x0, y - 3f, x1, y))
+            // Contact shadow falling from the ceiling into the open air below it.
+            val shadeH = min(52f, 20f + run.length * 3f)
+            bottomShades.add(Band(RectF(x0, y, x1, y + shadeH), LinearGradient(
+                0f, y, 0f, y + shadeH,
+                intArrayOf(Color.argb(112, 0, 0, 0), Color.argb(0, 0, 0, 0)),
+                null, Shader.TileMode.CLAMP
+            )))
             val p = buildHanging(run, x0, x1, y)
             if (p != null) pieces.add(p)
         }
@@ -167,6 +183,8 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
             faceBands.add(Band(RectF(x, y0, x + w, y1), LinearGradient(
                 x, 0f, x + w, 0f, intArrayOf(pal.rockFace, pal.rockDeep), null, Shader.TileMode.CLAMP
             )))
+            val detail = buildFaceDetail(x, y0, y1, 1f)
+            if (detail != null) pieces.add(detail)
         }
         for (run in grid.rightFaces) {
             val x = (run.col + 1) * T
@@ -176,7 +194,76 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
             faceBands.add(Band(RectF(x - w, y0, x, y1), LinearGradient(
                 x - w, 0f, x, 0f, intArrayOf(pal.rockDeep, pal.rockFace), null, Shader.TileMode.CLAMP
             )))
+            val detail = buildFaceDetail(x, y0, y1, -1f)
+            if (detail != null) pieces.add(detail)
         }
+
+        // Layered sediment lines inside the big rock masses, so walls are not flat slabs.
+        for (r in solidRects) {
+            if (r.width() < 130f || r.height() < 90f) continue
+            val strata = buildStrata(r)
+            if (strata != null) pieces.add(strata)
+        }
+    }
+
+    /** Hairline cracks and bedding seams on an exposed wall face. */
+    private fun buildFaceDetail(x: Float, y0: Float, y1: Float, into: Float): Piece? {
+        if (y1 - y0 < 70f) return null
+        val piece = Piece(RectF(x - 30f, y0 - 4f, x + 30f, y1 + 4f))
+        val cracks = Path()
+        val seams = Path()
+        val rim = Path()
+
+        var y = y0 + 24f + rnd.nextFloat() * 36f
+        while (y < y1 - 26f) {
+            val startX = x + into * (6f + rnd.nextFloat() * 18f)
+            val len = 18f + rnd.nextFloat() * 44f
+            cracks.moveTo(startX, y)
+            var px = startX
+            var py = y
+            for (k in 1..3) {
+                px += into * (rnd.nextFloat() - 0.35f) * 9f
+                py += len / 3f
+                cracks.lineTo(px, py)
+            }
+            y += len + 18f + rnd.nextFloat() * 40f
+        }
+        var sy = y0 + 28f + rnd.nextFloat() * 40f
+        while (sy < y1 - 20f) {
+            val len = 18f + rnd.nextFloat() * 34f
+            seams.moveTo(x + into * 2f, sy)
+            seams.quadTo(x + into * len * 0.6f, sy + (rnd.nextFloat() - 0.5f) * 5f, x + into * len, sy + (rnd.nextFloat() - 0.5f) * 3f)
+            sy += 44f + rnd.nextFloat() * 70f
+        }
+        // A soft rim light where the vertical face turns into open air.
+        rim.moveTo(x, y0 + 3f)
+        rim.lineTo(x, y1 - 3f)
+        piece.strokes.add(Triple(rim, Color.argb(42, Color.red(pal.rockRim), Color.green(pal.rockRim), Color.blue(pal.rockRim)), 4.5f))
+        piece.strokes.add(Triple(rim, Color.argb(110, Color.red(pal.rockRim), Color.green(pal.rockRim), Color.blue(pal.rockRim)), 1.3f))
+        piece.strokes.add(Triple(seams, Color.argb(48, Color.red(pal.rockRim), Color.green(pal.rockRim), Color.blue(pal.rockRim)), 1.1f))
+        piece.strokes.add(Triple(cracks, Color.argb(85, 0, 0, 0), 1.5f))
+        return piece
+    }
+
+    /** Wavy bedding lines running through a solid mass. */
+    private fun buildStrata(r: RectF): Piece? {
+        val lines = Path()
+        var y = r.top + 22f + rnd.nextFloat() * 46f
+        while (y < r.bottom - 14f) {
+            val amp = 2f + rnd.nextFloat() * 3.5f
+            val ph = rnd.nextFloat() * 6.283f
+            var x = r.left + 6f
+            lines.moveTo(x, y + sin(x * 0.016f + ph) * amp)
+            while (x < r.right - 6f) {
+                x = min(r.right - 6f, x + 28f)
+                lines.lineTo(x, y + sin(x * 0.016f + ph) * amp)
+            }
+            y += 38f + rnd.nextFloat() * 74f
+        }
+        if (lines.isEmpty) return null
+        val piece = Piece(RectF(r))
+        piece.strokes.add(Triple(lines, Color.argb(36, Color.red(pal.rockRim), Color.green(pal.rockRim), Color.blue(pal.rockRim)), 1.1f))
+        return piece
     }
 
     /** The walkable rim of a rock surface: wavy highlight, moss, tufts and biome litter. */
@@ -186,11 +273,23 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         val phB = rnd.nextFloat() * 6.283f
         fun crownY(x: Float): Float = y + sin(x * 0.021f + phA) * 1.5f + sin(x * 0.057f + phB) * 0.8f
 
+        // A fainter echo of the rim a little further down the rock, plus a soft glow
+        // under the highlight so the silhouette catches the biome light.
+        val echo = Path()
+        var x = x0
+        echo.moveTo(x, crownY(x) + 11f)
+        while (x < x1) {
+            x = min(x1, x + 16f)
+            echo.lineTo(x, crownY(x) + 9f + sin(x * 0.083f + phB) * 2.4f)
+        }
+        piece.strokes.add(Triple(echo, Color.argb(55, Color.red(pal.rockRim), Color.green(pal.rockRim), Color.blue(pal.rockRim)), 1.15f))
+
         // highlight line
         val crown = Path()
-        var x = x0
+        x = x0
         crown.moveTo(x, crownY(x))
         while (x < x1) { x = min(x1, x + 12f); crown.lineTo(x, crownY(x)) }
+        piece.strokes.add(Triple(crown, Color.argb(46, Color.red(pal.rockRim), Color.green(pal.rockRim), Color.blue(pal.rockRim)), 5.5f))
         piece.strokes.add(Triple(crown, pal.rockRim, 2.2f))
 
         if (pal.grassy || biome == Biome.FUNGAL) {
@@ -274,7 +373,7 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
                     shards.moveTo(cx - w, y + 1f); shards.lineTo(cx + lean, y - h); shards.lineTo(cx + w, y + 1f); shards.close()
                     hi.moveTo(cx - w * 0.25f, y); hi.lineTo(cx + lean * 0.9f, y - h * 0.9f); hi.lineTo(cx + w * 0.25f, y); hi.close()
                 }
-                piece.glows.add(floatArrayOf(x, y - 10f, 34f, 24f, 55f, 0f))
+                piece.glows.add(floatArrayOf(x, y - 10f, 34f, 24f, 55f, 2f))
             }
             x += 26f + rnd.nextFloat() * 50f
         }
@@ -511,6 +610,169 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         }
     }
 
+    // ===================================================================== grass
+
+    private fun buildGrass() {
+        val gp = Greenery.palette(biome)
+        if (gp.density <= 0.01f) return
+
+        val avoid = ArrayList<FloatArray>()
+        for (b in benchSpots) avoid.add(floatArrayOf(b[0], 76f))
+        for (l in lamps) avoid.add(floatArrayOf(l.x, 66f))
+        for (l in landmarks) avoid.add(floatArrayOf(l.x, 118f))
+        for (w in wells) avoid.add(floatArrayOf((w.left + w.right) * 0.5f, 96f))
+
+        fun clearOf(x: Float): Boolean {
+            for (a in avoid) if (abs(x - a[0]) < a[1]) return false
+            return true
+        }
+
+        fun addPatch(x: Float, groundY: Float, sizeScale: Float = 1f) {
+            if (grassPatches.size >= 560 || !clearOf(x)) return
+            val r2 = Random(def.id.hashCode() * 31 + (x * 7f).toInt() + (groundY * 3f).toInt())
+            val h = when (gp.style) {
+                GrassStyle.REED -> 26f + r2.nextFloat() * 22f
+                GrassStyle.DRY -> 13f + r2.nextFloat() * 13f
+                GrassStyle.FERN -> 16f + r2.nextFloat() * 16f
+                GrassStyle.SHARD -> 17f + r2.nextFloat() * 17f
+                GrassStyle.TUFT -> 15f + r2.nextFloat() * 17f
+            } * gp.scale * sizeScale
+            val w = when (gp.style) {
+                GrassStyle.REED -> 16f + r2.nextFloat() * 10f
+                GrassStyle.DRY -> 16f + r2.nextFloat() * 13f
+                GrassStyle.FERN -> 34f + r2.nextFloat() * 20f
+                GrassStyle.SHARD -> 19f + r2.nextFloat() * 12f
+                GrassStyle.TUFT -> 21f + r2.nextFloat() * 14f
+            } * gp.scale
+            grassPatches.add(
+                GrassPatch(
+                    x = x, baseY = groundY, width = w, maxHeight = h,
+                    deepColor = gp.deep, midColor = gp.mid, litColor = gp.lit,
+                    fleckColor = gp.fleck, glowColor = gp.glow, glowKind = gp.glowKind,
+                    style = gp.style,
+                    seed = def.id.hashCode() * 131 + (x * 11f).toInt() * 7 + (groundY * 5f).toInt()
+                )
+            )
+        }
+
+        // Procedural cover along every exposed, walkable rock surface.
+        val spacing = when (gp.style) {
+            GrassStyle.REED -> 92f
+            GrassStyle.FERN -> 118f
+            GrassStyle.SHARD -> 152f
+            else -> 108f
+        } / gp.density.coerceIn(0.12f, 1f)
+
+        for (run in grid.tops) {
+            val x0 = run.col * T
+            val x1 = (run.col + run.length) * T
+            val y = run.row * T
+            var x = x0 + 16f + rnd.nextFloat() * 34f
+            while (x < x1 - 12f) {
+                // The spacing already carries the biome density; the rare skip just
+                // keeps the line from looking like it was planted with a ruler.
+                if (rnd.nextFloat() > 0.12f) addPatch(x, y + 1f)
+                x += spacing * (0.64f + rnd.nextFloat() * 0.86f)
+            }
+        }
+
+        // A few clumps on the longer jump-through ledges.
+        for (r in ledgeRects) {
+            if (r.width() < 64f || rnd.nextFloat() > gp.density * 0.85f) continue
+            val n = 1 + rnd.nextInt(2)
+            for (i in 0 until n) {
+                addPatch(r.left + 18f + rnd.nextFloat() * (r.width() - 36f), r.top + 1f, 0.82f)
+            }
+        }
+
+        // Guarantee the start of the game is dressed: a handful of clumps around the spawn,
+        // so the first screen shows the mechanic without having to hunt for it.
+        if (!spawnX.isNaN() && !spawnY.isNaN()) {
+            val spawnRow = (spawnY / T).toInt()
+            for (dx in floatArrayOf(-214f, -148f, -92f, -58f, 62f, 104f, 158f, 224f)) {
+                val gx = spawnX + dx
+                val col = (gx / T).toInt()
+                val grounded = solid(col, spawnRow) && !solid(col, spawnRow - 1)
+                if (grounded) addPatch(gx, spawnY + 1f, 1.06f)
+            }
+        }
+    }
+
+    private fun buildMotes() {
+        val chance = when (biome) {
+            Biome.GREEN -> 0.52f
+            Biome.FUNGAL -> 0.5f
+            Biome.CRYSTAL -> 0.42f
+            Biome.RESTING -> 0.3f
+            Biome.BASIN -> 0.24f
+            Biome.ABYSS -> 0.34f
+            Biome.WATERWAYS -> 0.26f
+            else -> return
+        }
+        val warm = biome == Biome.FUNGAL
+        for (run in grid.tops) {
+            val x0 = run.col * T
+            val x1 = (run.col + run.length) * T
+            val y = run.row * T
+            var x = x0 + 12f + rnd.nextFloat() * 28f
+            while (x < x1 - 10f) {
+                if (rnd.nextFloat() < chance) {
+                    motes.add(floatArrayOf(
+                        x, y - 6f - rnd.nextFloat() * 54f,
+                        rnd.nextFloat() * 6.283f,
+                        0.9f + rnd.nextFloat() * 1.5f,
+                        if (warm) 1f else 0f
+                    ))
+                }
+                x += 34f + rnd.nextFloat() * 86f
+            }
+        }
+    }
+
+    /** Rustle the cover under the player and tick regrowth. */
+    fun updateGrass(dt: Float, playerBox: RectF?, playerVx: Float) {
+        if (grassPatches.isEmpty()) return
+        val speed = 0.35f + (abs(playerVx) / 320f).coerceAtMost(0.65f)
+        for (g in grassPatches) {
+            g.update(dt)
+            if (playerBox == null || g.isCut) continue
+            if (abs(playerBox.centerX() - g.x) < g.width * 0.6f + 16f &&
+                playerBox.bottom > g.baseY - g.maxHeight && playerBox.top < g.baseY + 8f
+            ) {
+                g.disturb(playerBox.centerX(), speed)
+            }
+        }
+    }
+
+    /**
+     * Draw the clumps the knight is standing in again, over the knight, so tall grass
+     * visibly swallows the boots instead of always sitting politely behind them.
+     */
+    fun drawGrassFront(canvas: Canvas, paint: Paint, view: RectF, t: Float, focus: RectF) {
+        for (g in grassPatches) {
+            if (g.isCut) continue
+            if (abs(g.baseY - focus.bottom) > 26f) continue
+            if (g.bounds.right < focus.left || g.bounds.left > focus.right) continue
+            if (!vis(g.bounds, view)) continue
+            g.draw(canvas, paint, t)
+        }
+    }
+
+    /** Shear every clump the nail sweep passes through. Returns how many were cut. */
+    fun cutGrass(hit: RectF, onCut: (GrassPatch) -> Unit): Int {
+        var cut = 0
+        for (g in grassPatches) {
+            if (g.isCut || !RectF.intersects(g.bounds, hit)) continue
+            if (g.cut()) { onCut(g); cut++ }
+        }
+        return cut
+    }
+
+    /** Benches restore the undergrowth (and everything else that respawns on rest). */
+    fun restoreGrass() {
+        for (g in grassPatches) g.restore()
+    }
+
     // ===================================================================== drawing
 
     private fun vis(r: RectF, view: RectF): Boolean =
@@ -534,12 +796,20 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         for (r in bottomRims) if (vis(r, view)) canvas.drawRect(r, paint)
         paint.alpha = 255
 
+        // Ceiling contact shadows fall into the air in front of the rock.
+        for (b in bottomShades) if (vis(b.rect, view)) { paint.shader = b.shader; canvas.drawRect(b.rect, paint) }
+        paint.shader = null
+
         for (p in pieces) if (vis(p.bounds, view)) drawPiece(canvas, paint, p)
 
         for (l in ledgeArt) if (vis(l.rect, view)) drawLedge(canvas, paint, l)
 
         for (a in acidPools) if (vis(a, view)) Props.acidPool(canvas, paint, a, pal.hazard, pal.hazardLit, t)
         for (s in spikeBeds) if (vis(s, view)) Props.spikeBed(canvas, paint, s.left, s.right, s.top, s.bottom, pal.hazard, pal.hazardLit)
+
+        // Ground cover in front of the rock rim but behind the props and actors.
+        for (g in grassPatches) if (vis(g.bounds, view)) g.draw(canvas, paint, t)
+        drawMotes(canvas, paint, view, t)
 
         for (w in wells) if (vis(RectF(w.left - 40f, w.top - 140f, w.right + 40f, w.top + 40f), view)) Props.well(canvas, paint, w.left, w.right, w.top)
         for (l in landmarks) if (vis(l.bounds, view)) Props.landmark(canvas, paint, biome, l.x, l.y, pal.glow, t, l.seed)
@@ -595,15 +865,44 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
                 paint.color = if (g[5] > 0.5f) EnvPalette.sporeWarm else pal.glow
                 canvas.drawCircle(g[0], g[1], g[2], paint)
             } else {
-                EnvArt.bloom(canvas, paint, g[0], g[1], g[2], g[3], if (g[5] > 0.5f) EnvArt.glowWarm else EnvArt.glowTeal, g[4].toInt())
+                val shader = when {
+                    g[5] > 1.5f -> EnvArt.glowRose
+                    g[5] > 0.5f -> EnvArt.glowWarm
+                    biome == Biome.CRYSTAL -> EnvArt.glowRose
+                    biome == Biome.BASIN || biome == Biome.RESTING -> EnvArt.glowPale
+                    else -> EnvArt.glowTeal
+                }
+                EnvArt.bloom(canvas, paint, g[0], g[1], g[2], g[3], shader, g[4].toInt())
             }
         }
+    }
+
+    /** Slow, weightless spores catching the biome light. */
+    private fun drawMotes(canvas: Canvas, paint: Paint, view: RectF, t: Float) {
+        if (motes.isEmpty()) return
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        for (m in motes) {
+            if (m[0] < view.left - 20f || m[0] > view.right + 20f ||
+                m[1] < view.top - 30f || m[1] > view.bottom + 30f
+            ) continue
+            val twinkle = 0.4f + 0.6f * (0.5f + 0.5f * sin(t * 1.7f + m[2]))
+            paint.color = if (m[4] > 0.5f) EnvPalette.sporeWarm else pal.glow
+            paint.alpha = (120f * twinkle).toInt().coerceIn(0, 255)
+            val px = m[0] + sin(t * 0.7f + m[2]) * 7f
+            val py = m[1] - sin(t * 1.05f + m[2] * 1.6f) * 9f
+            canvas.drawCircle(px, py, m[3], paint)
+        }
+        paint.alpha = 255
     }
 
     private fun drawLedge(canvas: Canvas, paint: Paint, l: LedgeArt) {
         val r = l.rect
         paint.shader = null
         paint.style = Paint.Style.FILL
+        // Soft shadow cast by the ledge onto the rock behind it.
+        paint.color = Color.argb(58, 0, 0, 0)
+        canvas.drawRect(r.left + 5f, r.bottom + 3f, r.right - 5f, r.bottom + 13f, paint)
         paint.color = pal.ledge
         canvas.drawRoundRect(r.left + 1f, r.top, r.right - 1f, r.bottom + 4f, 5f, 5f, paint)
         paint.style = Paint.Style.STROKE

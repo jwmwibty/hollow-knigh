@@ -48,6 +48,8 @@ class Player(
     private var doubleJumpBurstTimer = 0f
     private var airJumpsUsed = 0
     private val maxAirJumps = 1
+    /** Distance from the boots down to the nearest floor; -1 when there is none nearby. */
+    private var shadowDrop = -1f
     var dashCooldown = 0f
     var canDashInAir = true
     var invincibilityTimer = 0f
@@ -395,6 +397,8 @@ class Player(
             airJumpsUsed = 0
         }
 
+        updateShadow(platforms)
+
         // Touch damage from active enemy if not parrying/invincible
         if (invincibilityTimer <= 0f && state != PlayerState.PARRYING && state != PlayerState.DEAD) {
             val playerBox = getBoundingBox()
@@ -407,6 +411,17 @@ class Player(
                 }
             }
         }
+    }
+
+    /** Find the floor under the boots so the contact shadow can sit on it. */
+    private fun updateShadow(platforms: List<RectF>) {
+        var best = Float.MAX_VALUE
+        for (p in platforms) {
+            if (x + width * 0.2f < p.left || x - width * 0.2f > p.right) continue
+            val d = p.top - y
+            if (d >= -2f && d < best) best = d
+        }
+        shadowDrop = if (best == Float.MAX_VALUE) -1f else best.coerceAtLeast(0f)
     }
 
     private fun checkCombatCollisions(enemies: List<Enemy>) {
@@ -508,6 +523,9 @@ class Player(
         val dir = if (facing == Facing.RIGHT) 1f else -1f
         val isFlashing = flashTimer > 0f
 
+        // 0. Grounding: a soft shadow that stays on the floor while jumping.
+        drawContactShadow(canvas, paint)
+
         // 1. Tattered Yellow Cape (Back layer)
         drawCape(canvas, paint, dir, isFlashing)
 
@@ -528,6 +546,18 @@ class Player(
 
         // 7. Special Combat FX (parry sparks, heal aura, dash trail)
         drawSpecialEffects(canvas, paint)
+    }
+
+    /** Soft blob of shade underneath the knight, projected onto the floor. */
+    private fun drawContactShadow(canvas: Canvas, paint: Paint) {
+        if (shadowDrop < 0f) return
+        val falloff = (1f - shadowDrop / 260f).coerceIn(0.22f, 1f)
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        paint.alpha = 255
+        paint.color = Color.argb((80f * falloff).toInt().coerceIn(0, 255), 0, 0, 0)
+        val halfW = 19f + shadowDrop * 0.04f
+        canvas.drawOval(x - halfW, y + shadowDrop - 4f, x + halfW, y + shadowDrop + 4f, paint)
     }
 
     private fun drawCape(canvas: Canvas, paint: Paint, dir: Float, isFlashing: Boolean) {
@@ -833,6 +863,25 @@ class Player(
 
     private fun drawSpecialEffects(canvas: Canvas, paint: Paint) {
         paint.style = Paint.Style.STROKE
+
+        // Nail swipe: a bright crescent that snaps out ahead of the knight.
+        if (state == PlayerState.STABBING) {
+            val progress = (1f - stateTimer / 0.22f).coerceIn(0f, 1f)
+            val fade = (1f - progress).coerceIn(0f, 1f)
+            val dir = if (facing == Facing.RIGHT) 1f else -1f
+            val cx = x + dir * 20f
+            val cy = y - height * 0.52f
+            val r = 42f + progress * 16f
+            val start = if (dir > 0) -70f else 110f
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeWidth = 6f * (1f - progress * 0.55f)
+            paint.color = Color.argb((130f * fade).toInt().coerceIn(0, 255), 226, 238, 255)
+            canvas.drawArc(RectF(cx - r, cy - r, cx + r, cy + r), start, 140f, false, paint)
+            paint.strokeWidth = 2.2f
+            paint.color = Color.argb((105f * fade).toInt().coerceIn(0, 255), 255, 236, 178)
+            canvas.drawArc(RectF(cx - r + 8f, cy - r + 8f, cx + r - 8f, cy + r - 8f), start + 26f, 62f, false, paint)
+            paint.strokeCap = Paint.Cap.BUTT
+        }
 
         // Parry golden flash spark
         if (state == PlayerState.PARRYING && parrySuccess) {

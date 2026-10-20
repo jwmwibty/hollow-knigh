@@ -101,7 +101,7 @@ object Props {
                 canvas.drawLine(x, chainTop, x, top - 6f, paint)
                 fill(paint, Color.rgb(32, 36, 48))
                 canvas.drawRoundRect(x - 9f, top - 8f, x + 9f, top + 18f, 4f, 4f, paint)
-                EnvArt.bloom(canvas, paint, x, top + 5f, 80f * flicker, 80f * flicker, if (biome == Biome.BASIN) EnvArt.glowTeal else EnvArt.glowWarm, 110)
+                EnvArt.bloom(canvas, paint, x, top + 5f, 80f * flicker, 80f * flicker, if (biome == Biome.BASIN) EnvArt.glowPale else EnvArt.glowWarm, 110)
                 fill(paint, glow)
                 canvas.drawRoundRect(x - 5f, top - 3f, x + 5f, top + 13f, 2f, 2f, paint)
             }
@@ -119,7 +119,7 @@ object Props {
             }
             Biome.CRYSTAL -> {
                 crystalCluster(canvas, paint, x, y, 1.3f, glow, seed)
-                EnvArt.bloom(canvas, paint, x, y - 24f, 90f * flicker, 70f * flicker, EnvArt.glowTeal, 60)
+                EnvArt.bloom(canvas, paint, x, y - 24f, 90f * flicker, 70f * flicker, EnvArt.glowRose, 60)
             }
             Biome.EDGE -> {
                 // Stone brazier with a pale flame.
@@ -310,7 +310,7 @@ object Props {
             fill(paint, Color.WHITE, 110)
             canvas.drawPath(path, paint)
         }
-        EnvArt.bloom(canvas, paint, x, y - 14f * scale, 50f * scale, 36f * scale, EnvArt.glowTeal, 50)
+        EnvArt.bloom(canvas, paint, x, y - 14f * scale, 50f * scale, 36f * scale, EnvArt.glowRose, 50)
     }
 
     /** Stone well ring drawn at the top of a surface shaft. */
