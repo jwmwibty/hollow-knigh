@@ -18,13 +18,11 @@ import kotlin.math.max
  * Player Controller wielding a sword.
  * Abilities:
  * - Movement: Run, Jump, Dash (invincible i-frames)
- * - Sword Combat — two attacks and nothing else:
- *    * Light attack: a quick slash that sweeps a wide, short arc.
- *    * Stab: a committed forward thrust with the point.
+ * - Sword Combat: slash, thrust, rising cut, and an aerial downstrike with a hit-confirmed bounce.
  * - Heal: Focus soul / thread to restore 1 mask.
  *
- * The timing, damage and hitbox windows of both attacks live in [PlayerCombat], which is pure
- * Kotlin and unit-tested; this class only turns that model into movement, hitboxes and art.
+ * The timing, damage and hitbox windows live in [PlayerCombat], which is pure Kotlin; this
+ * class turns that model into movement, collision boxes, bounce response and sword animation.
  */
 class Player(
     var x: Float,
@@ -153,11 +151,25 @@ class Player(
         beginAttack(CombatMove.SLASH)
     }
 
-    /**
-     * The other core move: a committed forward thrust with the point of the sword.
-     */
+    /** A committed forward thrust with extra reach and damage. */
     fun stab() {
         beginAttack(CombatMove.THRUST)
+    }
+
+    /** A rising cut whose tall hitbox is designed to catch hovering or jumping enemies. */
+    fun risingCut() {
+        beginAttack(CombatMove.RISING_CUT)
+    }
+
+    /**
+     * A downward aerial strike. It sends the knight downward, and a confirmed hit rebounds
+     * upward so the player can chain a well-timed strike into another jump.
+     */
+    fun downstrike() {
+        if (isGrounded || state == PlayerState.DEAD || state == PlayerState.DASHING) return
+        if (beginAttack(CombatMove.DOWNSTRIKE)) {
+            vy = max(vy, 120f)
+        }
     }
 
     /**
@@ -165,9 +177,9 @@ class Player(
      * or in the middle of a swing's wind-up/strike; the short recovery tail can be cancelled
      * into the next attack, so mashing the button never feels locked out.
      */
-    private fun beginAttack(move: CombatMove) {
-        if (state == PlayerState.DEAD || state == PlayerState.DASHING) return
-        if (!combat.begin(move)) return
+    private fun beginAttack(move: CombatMove): Boolean {
+        if (state == PlayerState.DEAD || state == PlayerState.DASHING) return false
+        if (!combat.begin(move)) return false
 
         // Swinging breaks focus rather than healing and attacking at the same time.
         if (state == PlayerState.HEALING) {
@@ -175,8 +187,9 @@ class Player(
             healCharge = 0f
         }
         activeHitbox = null
-        state = if (move == CombatMove.SLASH) PlayerState.SLASHING else PlayerState.STABBING
+        state = if (move == CombatMove.THRUST) PlayerState.STABBING else PlayerState.SLASHING
         stateTimer = combat.currentSpec?.duration ?: 0f
+        return true
     }
 
     /**
@@ -185,14 +198,28 @@ class Player(
      */
     private fun buildHitbox(spec: MoveSpec): AttackHitbox {
         val reach = spec.reach
-        val attackX = if (facing == Facing.RIGHT) x + 10f else x - 10f - reach
-        val box = RectF(
-            attackX,
-            y - height * spec.boxTopFraction,
-            attackX + reach,
-            y - height * spec.boxBottomFraction
-        )
-        val knockDir = if (facing == Facing.RIGHT) spec.knockbackX else -spec.knockbackX
+        val rightFacing = facing == Facing.RIGHT
+        val box = when (combat.move) {
+            CombatMove.RISING_CUT -> {
+                // Front-biased vertical sweep reaches well above the knight's head.
+                val left = if (rightFacing) x + 2f else x - reach - 2f
+                RectF(left, y - height * 1.38f, left + reach + 4f, y - height * 0.32f)
+            }
+            CombatMove.DOWNSTRIKE -> {
+                // Narrow blade zone under the feet; this move is only enabled in the air.
+                RectF(x - reach * 0.46f, y - 8f, x + reach * 0.46f, y + reach)
+            }
+            else -> {
+                val attackX = if (rightFacing) x + 10f else x - 10f - reach
+                RectF(
+                    attackX,
+                    y - height * spec.boxTopFraction,
+                    attackX + reach,
+                    y - height * spec.boxBottomFraction
+                )
+            }
+        }
+        val knockDir = if (rightFacing) spec.knockbackX else -spec.knockbackX
         return AttackHitbox(box, spec.damage, knockDir, spec.knockbackY)
     }
 
@@ -385,7 +412,8 @@ class Player(
 
         // The blade only exists while it is actually travelling, and hits at most once.
         if (combat.isActive && !combat.connected) {
-            if (activeHitbox == null) activeHitbox = buildHitbox(spec)
+            // Rebuild each active frame so the attack follows the knight and meets fast chargers.
+            activeHitbox = buildHitbox(spec)
             checkCombatCollisions(enemies)
         } else {
             activeHitbox = null
@@ -394,23 +422,36 @@ class Player(
 
     private fun checkCombatCollisions(enemies: List<Enemy>) {
         val attack = activeHitbox ?: return
+        val move = combat.move
         for (enemy in enemies) {
             if (!enemy.isAlive) continue
             if (!RectF.intersects(attack.rect, enemy.getBoundingBox())) continue
 
             val before = enemy.hp
             enemy.takeDamage(attack.damage, attack.knockbackX, attack.knockbackY)
+
+            // An enemy may reject this hit during brief invulnerability or while guarding.
+            // Don't spend the player's swing unless health actually decreases.
+            if (enemy.hp >= before) continue
+
             combat.onHit()
             activeHitbox = null
-            // Soul only for a blow that actually landed, and a small spark where it connected.
-            if (enemy.hp < before) {
-                val spec = combat.currentSpec ?: return
-                soul = (soul + spec.soulGain).coerceAtMost(maxSoul)
-                impactTimer = 0.12f
-                impactX = attack.rect.centerX()
-                impactY = enemy.y - enemy.height * 0.55f
+
+            if (move == CombatMove.DOWNSTRIKE && !isGrounded) {
+                vy = -430f
+                isGrounded = false
+                airJumpsUsed = 0
+                canDashInAir = true
+                doubleJumpBurstTimer = 0.14f
             }
-            break
+
+            // Soul and impact feedback are reserved for confirmed damage, never blocked hits.
+            val spec = combat.currentSpec ?: return
+            soul = (soul + spec.soulGain).coerceAtMost(maxSoul)
+            impactTimer = 0.12f
+            impactX = attack.rect.centerX()
+            impactY = enemy.y - enemy.height * 0.55f
+            return
         }
     }
 
@@ -752,23 +793,54 @@ class Player(
 
         when (state) {
             PlayerState.SLASHING -> {
-                when (combat.phase) {
-                    AttackPhase.WINDUP -> {
-                        // Anticipation: the blade is lifted back over the shoulder.
-                        val t = smooth(combat.phaseProgress)
-                        angle = lerp(ready, SLASH_START, t)
-                        extend = -3f * t
+                when (combat.move) {
+                    CombatMove.RISING_CUT -> {
+                        when (combat.phase) {
+                            AttackPhase.WINDUP -> {
+                                val t = smooth(combat.phaseProgress)
+                                angle = lerp(ready, 58f, t)
+                                extend = -4f * t
+                            }
+                            AttackPhase.ACTIVE -> {
+                                val t = easeOut(combat.phaseProgress)
+                                angle = lerp(58f, -104f, t)
+                                arcFrom = 58f
+                                arcSweep = angle - 58f
+                            }
+                            else -> angle = lerp(-104f, ready, smooth(combat.phaseProgress))
+                        }
                     }
-                    AttackPhase.ACTIVE -> {
-                        // The strike: one fast sweep down and through, trailing its own arc.
-                        val t = easeOut(combat.phaseProgress)
-                        angle = lerp(SLASH_START, SLASH_END, t)
-                        arcFrom = SLASH_START
-                        arcSweep = angle - SLASH_START
+                    CombatMove.DOWNSTRIKE -> {
+                        when (combat.phase) {
+                            AttackPhase.WINDUP -> {
+                                val t = smooth(combat.phaseProgress)
+                                angle = lerp(ready, 54f, t)
+                                extend = 2f * t
+                            }
+                            AttackPhase.ACTIVE -> {
+                                angle = lerp(54f, 78f, easeOut(combat.phaseProgress))
+                                extend = lerp(2f, 12f, easeOut(combat.phaseProgress))
+                            }
+                            else -> {
+                                val t = smooth(combat.phaseProgress)
+                                angle = lerp(78f, ready, t)
+                                extend = lerp(12f, 0f, t)
+                            }
+                        }
                     }
-                    else -> {
-                        // Short recovery back to the ready pose.
-                        angle = lerp(SLASH_END, ready, smooth(combat.phaseProgress))
+                    else -> when (combat.phase) {
+                        AttackPhase.WINDUP -> {
+                            val t = smooth(combat.phaseProgress)
+                            angle = lerp(ready, SLASH_START, t)
+                            extend = -3f * t
+                        }
+                        AttackPhase.ACTIVE -> {
+                            val t = easeOut(combat.phaseProgress)
+                            angle = lerp(SLASH_START, SLASH_END, t)
+                            arcFrom = SLASH_START
+                            arcSweep = angle - SLASH_START
+                        }
+                        else -> angle = lerp(SLASH_END, ready, smooth(combat.phaseProgress))
                     }
                 }
             }
