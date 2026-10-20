@@ -49,7 +49,7 @@ data class MoveSpec(
 }
 
 /**
- * Drives the two attacks one frame at a time.
+ * Drives all four attacks one frame at a time.
  *
  * An attack always plays WINDUP -> ACTIVE -> RECOVER. The damage window is exactly the
  * ACTIVE slice, so the sword is only dangerous while the blade is visibly travelling, and
@@ -252,7 +252,7 @@ class PlayerCombat(
             windup = 0.04f,
             active = 0.16f,
             recovery = 0.18f,
-            damage = 20,
+            damage = 22,
             reach = 58f,
             boxTopFraction = 0.92f,
             boxBottomFraction = 0.18f,
