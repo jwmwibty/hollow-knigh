@@ -140,8 +140,8 @@ object Greenery {
 
     /** The Abyss: pale, ghostly fronds that catch the last of the light. */
     private val abyss = GrassPalette(
-        deep = c(18, 18, 28), mid = c(38, 38, 56), lit = c(78, 78, 106),
-        fleck = c(150, 152, 184), glow = c(200, 210, 230), glowKind = GrassGlow.VOID,
+        deep = c(22, 22, 34), mid = c(50, 50, 74), lit = c(104, 106, 140),
+        fleck = c(176, 180, 214), glow = c(200, 210, 230), glowKind = GrassGlow.VOID,
         style = GrassStyle.SHARD, density = 0.16f, scale = 0.9f
     )
 
@@ -288,6 +288,11 @@ class GrassPatch(
             }
             if (style == GrassStyle.REED && i % 4 == 1) {
                 tips.addOval(RectF(tipX - 2.1f, tipY - 8f, tipX + 2.1f, tipY + 1f), Path.Direction.CW)
+            }
+            // Dew / spore points on the plain and straw tufts: they carry the
+            // biome's glow in caves and a pale catch-light on the surface.
+            if ((style == GrassStyle.TUFT || style == GrassStyle.DRY) && i % 4 == 1) {
+                tips.addCircle(tipX, tipY - 1f, 1.35f, Path.Direction.CW)
             }
         }
 
