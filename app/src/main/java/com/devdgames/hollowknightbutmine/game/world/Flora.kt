@@ -175,8 +175,8 @@ object Flora {
         spores = 0f, sway = 0.05f
     )
     private val town = FloraProfile(
-        coverage = 0.44f, patch = 90f, spacingMin = 18f, spacingMax = 38f, clumpMin = 2, clumpMax = 4,
-        hMin = 7f, hMax = 16f, wMin = 1.8f, wMax = 3.0f, tall = 0.22f, tallScale = 1.75f, wind = 0.2f,
+        coverage = 0.58f, patch = 105f, spacingMin = 12f, spacingMax = 27f, clumpMin = 3, clumpMax = 5,
+        hMin = 16f, hMax = 34f, wMin = 2.4f, wMax = 4.2f, tall = 0.25f, tallScale = 1.6f, wind = 0.2f,
         cushions = 0.25f, moss = 0.25f, roots = 0f, sprouts = 0.15f, flowers = 0.12f, ferns = 0f, reeds = 0f,
         spores = 0f, sway = 0.05f
     )
