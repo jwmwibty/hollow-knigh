@@ -111,6 +111,7 @@ class GameWorld {
     private var currentBench: Bench? = null
     private val worldSpawnX: Float
     private val worldSpawnY: Float
+    private lateinit var storyArea: StoryArea
     private var lastSafeX = 0f
     private var lastSafeY = 0f
     private var safeTimer = 0f
@@ -171,6 +172,7 @@ class GameWorld {
         worldSpawnX = spawnScene.spawnX
         worldSpawnY = spawnScene.spawnY
         player = Player(x = worldSpawnX, y = worldSpawnY)
+        storyArea = StoryArea(worldSpawnX, worldSpawnY)
         lastSafeX = worldSpawnX
         lastSafeY = worldSpawnY
 
@@ -298,6 +300,15 @@ class GameWorld {
         mapOpen = !mapOpen
     }
 
+    /** Interact with nearby story spirits or the first rune puzzle. */
+    fun interact() {
+        if (!mapOpen && player.state != PlayerState.DEAD) {
+            if (!storyArea.interact(player.x, player.y)) {
+                combatMessage = ""
+            }
+        }
+    }
+
     fun triggerShake(intensity: Float, duration: Float) {
         screenShakeIntensity = intensity
         screenShakeTime = duration
@@ -364,6 +375,7 @@ class GameWorld {
         viewW = screenWidth / zoom
         viewH = DESIGN_VIEW_H
         gameTime += dt
+        storyArea.update(dt)
         if (mapOpen) return
 
         if (player.state == PlayerState.DEAD) {
@@ -777,6 +789,7 @@ class GameWorld {
             enemy.draw(canvas, paint)
         }
         for (proj in projectiles) proj.draw(canvas, paint)
+        storyArea.drawWorld(canvas, paint, gameTime, view)
         player.draw(canvas, paint)
         for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawLights(canvas, paint, view)
 
@@ -807,6 +820,7 @@ class GameWorld {
 
         // 4. screen-space UI
         drawHUD(canvas, paint, screenWidth, screenHeight)
+        storyArea.drawDialogue(canvas, paint, screenWidth / zoom, screenHeight / zoom)
         if (player.state == PlayerState.DEAD) drawDefeatedScreen(canvas, paint, screenWidth, screenHeight)
         if (mapOpen) {
             worldMap.draw(canvas, paint, screenWidth, screenHeight, gameTime, discovered, benches, player.x, player.y, currentScene?.def?.id)
