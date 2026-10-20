@@ -72,6 +72,10 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 }
                 return true
             }
+            KeyEvent.KEYCODE_F, KeyEvent.KEYCODE_ENTER -> {
+                if (event.repeatCount == 0) world.interact()
+                return true
+            }
             KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_TAB -> {
                 if (event.repeatCount == 0) {
                     world.toggleMap()
