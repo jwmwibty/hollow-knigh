@@ -4,18 +4,24 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import com.devdgames.hollowknightbutmine.game.env.AreaScene
 import com.devdgames.hollowknightbutmine.game.env.Backdrops
 import com.devdgames.hollowknightbutmine.game.env.EnemySpawnPoint
+import com.devdgames.hollowknightbutmine.game.env.EnvArt
+import com.devdgames.hollowknightbutmine.game.env.GrassPatch
 import com.devdgames.hollowknightbutmine.game.world.AreaDef
 import com.devdgames.hollowknightbutmine.game.world.WorldAtlas
 import com.devdgames.hollowknightbutmine.game.world.WorldLayout
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.random.Random
 
 /**
@@ -29,11 +35,26 @@ data class Particle(
     var radius: Float,
     var color: Int,
     var life: Float,
-    var maxLife: Float
+    var maxLife: Float,
+    /** Downward acceleration, for flecks that should arc back to the ground. */
+    var gravity: Float = 0f,
+    /** Fraction of velocity lost per second (0 = none). */
+    var drag: Float = 0f,
+    var rotation: Float = 0f,
+    var spin: Float = 0f,
+    /** Blades and grass flecks draw as little slivers instead of round sparks. */
+    var shard: Boolean = false
 ) {
     fun update(dt: Float) {
+        if (drag > 0f) {
+            val f = (1f - drag * dt).coerceAtLeast(0f)
+            vx *= f
+            vy *= f
+        }
+        vy += gravity * dt
         x += vx * dt
         y += vy * dt
+        rotation += spin * dt
         life -= dt
     }
 
@@ -118,6 +139,9 @@ class GameWorld {
 
     private val serif: Typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
     private val scratchPath = Path()
+    private var vignetteShader: Shader? = null
+    private var vignetteW = 0f
+    private var vignetteH = 0f
 
     init {
         // Collision: every area's solids and ledges plus the rock that fills the gaps between areas.
@@ -257,10 +281,55 @@ class GameWorld {
             particles.add(
                 Particle(
                     x = x, y = y,
-                    vx = kotlin.math.cos(angle) * speed,
-                    vy = kotlin.math.sin(angle) * speed,
+                    vx = cos(angle) * speed,
+                    vy = sin(angle) * speed,
                     radius = Random.nextFloat() * 3.5f + 2f,
-                    color = color, life = life, maxLife = life
+                    color = color, life = life, maxLife = life,
+                    gravity = 340f, drag = 0.9f,
+                    rotation = Random.nextFloat() * 6.28f,
+                    spin = (Random.nextFloat() - 0.5f) * 16f,
+                    shard = Random.nextFloat() < 0.32f
+                )
+            )
+        }
+    }
+
+    /** Green (or pale, or violet) flecks thrown out when a clump of grass is sheared off. */
+    private fun burstGrass(g: GrassPatch) {
+        val count = 8 + Random.nextInt(5)
+        for (i in 0 until count) {
+            val outward = if (Random.nextBoolean()) 1f else -1f
+            val life = 0.5f + Random.nextFloat() * 0.55f
+            val shard = i % 3 != 0
+            particles.add(
+                Particle(
+                    x = g.x + (Random.nextFloat() - 0.5f) * g.width,
+                    y = g.baseY - Random.nextFloat() * g.maxHeight * 0.85f,
+                    vx = outward * (24f + Random.nextFloat() * 126f),
+                    vy = -(60f + Random.nextFloat() * 190f),
+                    radius = 1.3f + Random.nextFloat() * 1.5f,
+                    color = if (Random.nextFloat() < 0.35f) g.deepColor else g.fleckColor,
+                    life = life, maxLife = life,
+                    gravity = 600f, drag = 0.65f,
+                    rotation = Random.nextFloat() * 6.28f,
+                    spin = (Random.nextFloat() - 0.5f) * 22f,
+                    shard = shard
+                )
+            )
+        }
+        // A little dust kicked up from the cut stems.
+        for (i in 0 until 3) {
+            val life = 0.3f + Random.nextFloat() * 0.25f
+            particles.add(
+                Particle(
+                    x = g.x + (Random.nextFloat() - 0.5f) * g.width * 0.7f,
+                    y = g.baseY - 2f,
+                    vx = (Random.nextFloat() - 0.5f) * 40f,
+                    vy = -8f - Random.nextFloat() * 24f,
+                    radius = 3f + Random.nextFloat() * 3f,
+                    color = g.deepColor,
+                    life = life, maxLife = life,
+                    gravity = -20f, drag = 2.4f
                 )
             )
         }
@@ -340,6 +409,17 @@ class GameWorld {
             triggerShake(12f, 0.3f)
             spawnSparks(player.x + 30f, player.y - player.height / 2, 22, Color.rgb(255, 120, 40))
         }
+
+        // ---- breakable grass: the nail shears it, movement bends it aside
+        val nail = player.activeHitbox
+        if (nail != null && player.state != PlayerState.DEAD) {
+            for (s in scenes) {
+                if (!RectF.intersects(s.bounds, nail.rect)) continue
+                s.cutGrass(nail.rect) { patch -> burstGrass(patch) }
+            }
+        }
+        val bodyBox = player.getBoundingBox()
+        for (s in scenes) s.updateGrass(dt, bodyBox, player.vx)
 
         // ---- enemies (only the ones near enough to matter)
         for (enemy in enemies) {
@@ -472,6 +552,7 @@ class GameWorld {
         player.currentMasks = player.maxMasks
         player.soul = max(player.soul, 33)
         respawnRegularEnemies()
+        for (s in scenes) s.restoreGrass()
         spawnSparks(b.x, b.y - 30f, 18, Color.rgb(255, 230, 170))
     }
 
@@ -544,18 +625,43 @@ class GameWorld {
             enemy.draw(canvas, paint)
         }
         for (proj in projectiles) proj.draw(canvas, paint)
+
+        // A faint halo behind the knight keeps the silhouette readable in the dark caverns.
+        val haloAlpha = (14f + scene.def.darkness * 46f).toInt().coerceIn(0, 70)
+        if (haloAlpha > 0) {
+            EnvArt.bloom(
+                canvas, paint, player.x, player.y - player.height * 0.5f,
+                118f, 128f, EnvArt.glowPale, haloAlpha
+            )
+        }
         player.draw(canvas, paint)
         for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawLights(canvas, paint, view)
 
         paint.shader = null
         paint.style = Paint.Style.FILL
         for (particle in particles) {
+            val fade = (particle.life / particle.maxLife).coerceIn(0f, 1f)
             paint.color = particle.color
-            canvas.drawCircle(particle.x, particle.y, particle.radius, paint)
+            paint.alpha = (255f * fade).toInt().coerceIn(0, 255)
+            if (particle.shard) {
+                canvas.save()
+                canvas.translate(particle.x, particle.y)
+                canvas.rotate(particle.rotation)
+                canvas.drawRect(
+                    -particle.radius * 0.6f, -particle.radius * 1.9f,
+                    particle.radius * 0.6f, particle.radius * 1.9f, paint
+                )
+                canvas.restore()
+            } else {
+                canvas.drawCircle(particle.x, particle.y, particle.radius * (0.55f + 0.45f * fade), paint)
+            }
         }
+        paint.alpha = 255
         canvas.restore()
 
-        // 3. front layer: weather, darkness, transitions, titles (design units)
+        // 3. front layer: atmosphere, weather, darkness, transitions, titles (design units)
+        Backdrops.drawAtmosphere(canvas, paint, scene.pal, viewW, viewH)
+        Backdrops.drawForegroundMotes(canvas, paint, scene.pal, scene.biome, camX, camY, viewW, viewH, gameTime)
         Backdrops.drawWeather(canvas, paint, scene.biome, scene.pal, camX, camY, viewW, viewH, gameTime)
         Backdrops.drawDarkness(canvas, paint, player.x - camX, player.y - camY - player.height * 0.5f, scene.def.darkness, viewW, viewH)
         drawEdgeVignette(canvas, paint)
@@ -581,16 +687,29 @@ class GameWorld {
     }
 
     private fun drawEdgeVignette(canvas: Canvas, paint: Paint) {
-        // Soft darkening at the screen edges, cheap and constant.
-        paint.shader = null
-        paint.style = Paint.Style.FILL
-        val a = 70
-        val h = viewH * 0.18f
-        for (i in 0 until 6) {
-            paint.color = Color.argb(a / 6, 0, 0, 0)
-            canvas.drawRect(0f, 0f, viewW, h * (1f - i / 6f), paint)
-            canvas.drawRect(0f, viewH - h * (1f - i / 6f), viewW, viewH, paint)
+        // Smooth radial fall-off at the frame edges. Cached because the design-space
+        // view only changes when the device aspect ratio does.
+        if (vignetteShader == null || vignetteW != viewW || vignetteH != viewH) {
+            val radius = kotlin.math.sqrt(viewW * viewW + viewH * viewH) * 0.62f
+            vignetteShader = RadialGradient(
+                viewW * 0.5f, viewH * 0.5f, radius,
+                intArrayOf(
+                    Color.TRANSPARENT,
+                    Color.TRANSPARENT,
+                    Color.argb(46, 0, 0, 0),
+                    Color.argb(128, 0, 0, 0)
+                ),
+                floatArrayOf(0f, 0.54f, 0.82f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            vignetteW = viewW
+            vignetteH = viewH
         }
+        paint.style = Paint.Style.FILL
+        paint.alpha = 255
+        paint.shader = vignetteShader
+        canvas.drawRect(0f, 0f, viewW, viewH, paint)
+        paint.shader = null
     }
 
     private fun drawTitleCard(canvas: Canvas, paint: Paint, scene: AreaScene) {

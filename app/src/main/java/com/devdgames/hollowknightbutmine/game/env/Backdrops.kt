@@ -33,6 +33,10 @@ object Backdrops {
     private var skyKey = 0
     private var skyH = 0f
 
+    private var atmosphere: Shader? = null
+    private var atmosphereKey = 0
+    private var atmosphereH = 0f
+
     private val darkShader = RadialGradient(
         0f, 0f, 1f,
         intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT, Color.argb(200, 0, 0, 0), Color.BLACK),
@@ -559,6 +563,68 @@ object Backdrops {
                         canvas.drawCircle(px, py, 2f + r.nextFloat() * 2.5f, paint)
                     }
                 }
+            }
+        }
+        paint.alpha = 255
+    }
+
+    // ------------------------------------------------------------------ atmosphere
+
+    /**
+     * Colour grade for the whole frame: a breath of the biome's glow rising from the
+     * bottom of the screen. It sits over the world but under the weather, so it pulls the
+     * scene together without hiding the geometry.
+     */
+    fun drawAtmosphere(canvas: Canvas, paint: Paint, pal: BiomePalette, viewW: Float, viewH: Float) {
+        val key = pal.glow * 31 + pal.rockDeep
+        if (atmosphere == null || atmosphereKey != key || atmosphereH != viewH) {
+            val g = pal.glow
+            atmosphere = LinearGradient(
+                0f, viewH * 0.38f, 0f, viewH,
+                intArrayOf(
+                    Color.TRANSPARENT,
+                    Color.argb(13, Color.red(g), Color.green(g), Color.blue(g)),
+                    Color.argb(38, Color.red(g), Color.green(g), Color.blue(g))
+                ),
+                floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
+            )
+            atmosphereKey = key
+            atmosphereH = viewH
+        }
+        paint.style = Paint.Style.FILL
+        paint.alpha = 255
+        paint.shader = atmosphere
+        canvas.drawRect(0f, 0f, viewW, viewH, paint)
+        paint.shader = null
+    }
+
+    /**
+     * A handful of out-of-focus motes drifting in front of everything. They move at a
+     * slightly faster parallax than the world, which is what sells the sense of depth.
+     */
+    fun drawForegroundMotes(
+        canvas: Canvas, paint: Paint, pal: BiomePalette, biome: Biome,
+        camX: Float, camY: Float, viewW: Float, viewH: Float, t: Float
+    ) {
+        val count = when (biome) {
+            Biome.GREEN, Biome.FUNGAL -> 5
+            Biome.CRYSTAL -> 4
+            Biome.RESTING, Biome.BASIN, Biome.ABYSS -> 3
+            Biome.CITY, Biome.WATERWAYS -> 2
+            else -> 0
+        }
+        if (count == 0) return
+        val warm = biome == Biome.FUNGAL
+        val cw = 560f
+        paint.style = Paint.Style.FILL
+        cells(canvas, camX, camY, 1.16f, viewW, viewH, cw, cw, 881) { r, x, y ->
+            val color = if (warm) EnvPalette.sporeWarm else pal.glow
+            for (k in 0 until count) {
+                val px = x + ((r.nextFloat() * cw + t * (5f + r.nextFloat() * 7f)) % cw + cw) % cw
+                val py = y + ((r.nextFloat() * cw - t * (4f + r.nextFloat() * 9f)) % cw + cw) % cw
+                paint.color = color
+                paint.alpha = 22 + r.nextInt(34)
+                canvas.drawCircle(px, py, 0.8f + r.nextFloat() * 1.2f, paint)
             }
         }
         paint.alpha = 255

@@ -45,6 +45,30 @@ internal object EnvArt {
         Shader.TileMode.CLAMP
     )
 
+    /** Rose light for the crystal mines. */
+    val glowRose: Shader = RadialGradient(
+        0f, 0f, 1f,
+        intArrayOf(
+            Color.argb(165, 255, 186, 244),
+            Color.argb(70, 224, 126, 218),
+            Color.argb(0, 150, 70, 160)
+        ),
+        floatArrayOf(0f, 0.42f, 1f),
+        Shader.TileMode.CLAMP
+    )
+
+    /** Bone-pale light for crypts, basins and the surface town. */
+    val glowPale: Shader = RadialGradient(
+        0f, 0f, 1f,
+        intArrayOf(
+            Color.argb(140, 226, 236, 255),
+            Color.argb(56, 168, 186, 216),
+            Color.argb(0, 110, 130, 170)
+        ),
+        floatArrayOf(0f, 0.45f, 1f),
+        Shader.TileMode.CLAMP
+    )
+
     /** Very dim haze used for the cavern floor and depth separation. */
     val glowVoid: Shader = RadialGradient(
         0f, 0f, 1f,
@@ -138,61 +162,6 @@ internal object EnvArt {
         }
         for (i in n downTo 0) path.lineTo(rx[i], ry[i])
         path.close()
-    }
-    /**
-     * Draws one curved blade with a soft, leafy silhouette and subtle highlight.
-     * Short segmented strokes create a bend instead of a straight spike.
-     */
-    fun drawGrassBlade(
-        canvas: Canvas,
-        paint: Paint,
-        x: Float,
-        baseY: Float,
-        height: Float,
-        sway: Float
-    ) {
-        val oldColor = paint.color
-        val oldStyle = paint.style
-        val oldStrokeWidth = paint.strokeWidth
-        val oldAlpha = paint.alpha
-        val oldCap = paint.strokeCap
-        paint.shader = null
-        paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = (height * 0.085f).coerceIn(1.4f, 3.2f)
-        paint.alpha = 205
-        paint.color = Color.rgb(27, 88, 61)
-        canvas.drawLine(x, baseY, x + sway * 0.25f - 1f, baseY - height * 0.38f, paint)
-        paint.strokeWidth *= 0.82f
-        paint.color = Color.rgb(42, 132, 79)
-        canvas.drawLine(x + sway * 0.25f - 1f, baseY - height * 0.38f,
-            x + sway * 0.72f + 1f, baseY - height * 0.78f, paint)
-        paint.strokeWidth *= 0.78f
-        paint.color = Color.rgb(82, 164, 91)
-        canvas.drawLine(x + sway * 0.72f + 1f, baseY - height * 0.78f,
-            x + sway, baseY - height, paint)
-        // Small side leaf breaks up the spear-like silhouette.
-        paint.strokeWidth = 1.5f
-        paint.color = Color.rgb(48, 119, 70)
-        canvas.drawLine(x - 1f, baseY - height * 0.34f,
-            x - 4f + sway * 0.18f, baseY - height * 0.52f, paint)
-        paint.color = oldColor
-        paint.style = oldStyle
-        paint.strokeWidth = oldStrokeWidth
-        paint.alpha = oldAlpha
-        paint.strokeCap = oldCap
-        paint.shader = null
-    }
-
-    /** Dense, varied tuft with overlapping leaves, rather than three isolated spikes. */
-    fun drawGrassPatch(canvas: Canvas, paint: Paint, x: Float, y: Float, wind: Float) {
-        drawGrassBlade(canvas, paint, x - 8f, y, 12f, wind * 0.35f - 1f)
-        drawGrassBlade(canvas, paint, x - 5f, y, 19f, wind * 0.65f - 2f)
-        drawGrassBlade(canvas, paint, x - 2f, y, 15f, wind * 0.45f + 1f)
-        drawGrassBlade(canvas, paint, x + 1f, y, 25f, wind)
-        drawGrassBlade(canvas, paint, x + 4f, y, 17f, wind * 0.7f + 2f)
-        drawGrassBlade(canvas, paint, x + 7f, y, 13f, wind * 0.4f + 1f)
-        drawGrassBlade(canvas, paint, x + 10f, y, 20f, wind * 0.8f - 1f)
     }
 
 }
