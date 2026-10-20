@@ -669,9 +669,9 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
             val y = run.row * T
             var x = x0 + 16f + rnd.nextFloat() * 34f
             while (x < x1 - 12f) {
-                if (rnd.nextFloat() < gp.density) {
-                    addPatch(x, y + 1f)
-                }
+                // The spacing already carries the biome density; the rare skip just
+                // keeps the line from looking like it was planted with a ruler.
+                if (rnd.nextFloat() > 0.12f) addPatch(x, y + 1f)
                 x += spacing * (0.64f + rnd.nextFloat() * 0.86f)
             }
         }

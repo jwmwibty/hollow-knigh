@@ -419,6 +419,13 @@ class GameWorld {
             }
         }
         val bodyBox = player.getBoundingBox()
+        // A dash mows through the cover as well - it reads as a clean line of cut stems.
+        if (player.state == PlayerState.DASHING) {
+            for (s in scenes) {
+                if (!RectF.intersects(s.bounds, bodyBox)) continue
+                s.cutGrass(bodyBox) { patch -> burstGrass(patch) }
+            }
+        }
         for (s in scenes) s.updateGrass(dt, bodyBox, player.vx)
 
         // ---- enemies (only the ones near enough to matter)
