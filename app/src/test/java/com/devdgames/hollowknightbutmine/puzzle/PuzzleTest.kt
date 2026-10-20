@@ -105,17 +105,17 @@ class PuzzleTest {
     @Test
     fun `the litany has exactly two short routes and both are findable`() {
         var short = 0
-        var any = 0
-        for (mask in 0 until 1 shl litany.cells) {
-            val presses = (0 until litany.cells).filter { (mask shr it) and 1 == 1 }
+        var routes = 0
+        for (mask in 0 until (1 shl litany.cells)) {
+            val presses = (0 until litany.cells).filter { i -> ((mask shr i) and 1) == 1 }
             val p = freshLitany()
             for (i in presses) p.press(i)
             if (!p.solved) continue
-            any++
+            routes++
             if (presses.size <= 3) short++
         }
-        assertEquals("the second route: 1, 2 and 3 together", 2, short)
-        assertTrue("a superset of a route also ends woken", any >= short)
+        assertEquals("two routes through it: 0,2,4 and 1,2,3", 2, routes)
+        assertEquals("and both are three presses or fewer", 2, short)
     }
 
     @Test
