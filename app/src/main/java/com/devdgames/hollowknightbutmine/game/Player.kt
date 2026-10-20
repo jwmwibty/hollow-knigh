@@ -43,6 +43,9 @@ class Player(
     /** Health masks. Starts at 5; each boss victory adds one (see game/boss). */
     var maxMasks = 5
     var currentMasks = 5
+    /** Each visible mask contains two damage points. 1 means the current mask is cracked/half spent. */
+    var damageInCurrentMask = 0
+    private val damagePerMask = 2
     var soul = 33 // 0 to 100
     val maxSoul = 100
 
@@ -220,7 +223,18 @@ class Player(
     fun takeDamage(amount: Int = 1) {
         if (invincibilityTimer > 0f) return
 
-        currentMasks = (currentMasks - amount).coerceAtLeast(0)
+        var remainingDamage = amount.coerceAtLeast(0)
+        while (remainingDamage > 0 && currentMasks > 0) {
+            val needed = damagePerMask - damageInCurrentMask
+            if (remainingDamage >= needed) {
+                remainingDamage -= needed
+                currentMasks = (currentMasks - 1).coerceAtLeast(0)
+                damageInCurrentMask = 0
+            } else {
+                damageInCurrentMask += remainingDamage
+                remainingDamage = 0
+            }
+        }
         healHeld = false
         invincibilityTimer = 1.0f
         flashTimer = 0.3f
@@ -277,6 +291,7 @@ class Player(
                     if (soul >= 33 && currentMasks < maxMasks) {
                         soul -= 33
                         currentMasks++
+                        damageInCurrentMask = 0
                     }
                     healCharge = 0f
                     if (healHeld && soul >= 33 && currentMasks < maxMasks && isGrounded) {
