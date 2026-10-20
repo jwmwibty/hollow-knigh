@@ -31,6 +31,12 @@ class StoryArea(private val originX: Float, private val floorY: Float) {
         if (dialogueTimer > 0f) dialogueTimer = (dialogueTimer - dt).coerceAtLeast(0f)
     }
 
+    /** True when an NPC or rune can be used from the player's current position. */
+    fun canInteract(playerX: Float, playerY: Float): Boolean {
+        if (abs(playerY - floorY) > 115f) return false
+        return abs(playerX - keeperX) <= 82f || abs(playerX - witnessX) <= 82f || (0..2).any { abs(playerX - runeX(it)) <= 70f }
+    }
+
     /** Interact with the closest story object in reach. Returns true when something happened. */
     fun interact(playerX: Float, playerY: Float): Boolean {
         if (abs(playerY - floorY) > 115f) return false
