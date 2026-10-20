@@ -736,11 +736,25 @@ class AreaScene(val grid: AreaGrid, private val layout: WorldLayout) {
         for (g in grassPatches) {
             g.update(dt)
             if (playerBox == null || g.isCut) continue
-            if (playerBox.right > g.bounds.left && playerBox.left < g.bounds.right &&
+            if (abs(playerBox.centerX() - g.x) < g.width * 0.6f + 16f &&
                 playerBox.bottom > g.baseY - g.maxHeight && playerBox.top < g.baseY + 8f
             ) {
                 g.disturb(playerBox.centerX(), speed)
             }
+        }
+    }
+
+    /**
+     * Draw the clumps the knight is standing in again, over the knight, so tall grass
+     * visibly swallows the boots instead of always sitting politely behind them.
+     */
+    fun drawGrassFront(canvas: Canvas, paint: Paint, view: RectF, t: Float, focus: RectF) {
+        for (g in grassPatches) {
+            if (g.isCut) continue
+            if (abs(g.baseY - focus.bottom) > 26f) continue
+            if (g.bounds.right < focus.left || g.bounds.left > focus.right) continue
+            if (!vis(g.bounds, view)) continue
+            g.draw(canvas, paint, t)
         }
     }
 

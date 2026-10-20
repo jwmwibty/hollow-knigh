@@ -635,6 +635,10 @@ class GameWorld {
             )
         }
         player.draw(canvas, paint)
+        // Grass at the knight's own feet is repeated in front, so the boots disappear
+        // into the cover while taller blades sway around the mask.
+        val playerBody = player.getBoundingBox()
+        for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawGrassFront(canvas, paint, view, gameTime, playerBody)
         for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawLights(canvas, paint, view)
 
         paint.shader = null
