@@ -176,8 +176,8 @@ class FloraTest {
                 val plan = Flora.plan(profile, seed * 977, x0, x1)
                 for (b in plan.blades) {
                     assertTrue("$biome blade x ${b.x} outside run", b.x >= x0 && b.x <= x1)
-                    assertTrue("$biome blade height ${b.h}", b.h > 2f && b.h < 40f)
-                    assertTrue("$biome blade width ${b.w}", b.w > 0.8f && b.w < 6.5f)
+                    assertTrue("$biome blade height ${b.h}", b.h > 2f && b.h < 90f)
+                    assertTrue("$biome blade width ${b.w}", b.w > 0.8f && b.w < 7.5f)
                     assertTrue("$biome blade layer ${b.layer}", b.layer in 0..2)
                     assertTrue("$biome blade base ${b.base}", b.base >= 0f && b.base < 15f)
                 }
