@@ -18,6 +18,8 @@ import com.devdgames.hollowknightbutmine.game.boss.BossSignal
 import com.devdgames.hollowknightbutmine.game.boss.BossSpec
 import com.devdgames.hollowknightbutmine.game.boss.SignalType
 import com.devdgames.hollowknightbutmine.game.env.EnemySpawnPoint
+import com.devdgames.hollowknightbutmine.game.story.StoryDirector
+import com.devdgames.hollowknightbutmine.game.story.StoryStage
 import com.devdgames.hollowknightbutmine.game.world.AreaDef
 import com.devdgames.hollowknightbutmine.game.world.AreaGrid
 import com.devdgames.hollowknightbutmine.game.world.GrassCutState
@@ -58,8 +60,11 @@ data class Particle(
  * town over a central hub, with branches climbing, descending and spreading sideways
  * into thirteen distinct regions. GameWorld owns the player, enemies, benches, camera,
  * area transitions, hazards, particles, HUD and the map overlay.
+ *
+ * It is also the [StoryStage] the story system performs on: shake, sparks and title cards are
+ * asked for rather than reached into, which keeps game/story runnable on the JVM.
  */
-class GameWorld {
+class GameWorld : StoryStage {
     // ------------------------------------------------------------------ world data
     val layout = WorldLayout(WorldAtlas.areas)
     val scenes: List<AreaScene> = layout.grids.map { AreaScene(it, layout) }
@@ -111,7 +116,14 @@ class GameWorld {
     private var currentBench: Bench? = null
     private val worldSpawnX: Float
     private val worldSpawnY: Float
-    private lateinit var storyArea: StoryArea
+
+    /**
+     * The story of this run: the cast standing in the kingdom, the puzzles they keep, the
+     * relics lying about it, and the task book that ties all three together. Built after
+     * [bossProgress] because the last task asks for the two bosses of the east wing.
+     */
+    private val story = StoryDirector(layout, bossProgress, this)
+
     private var lastSafeX = 0f
     private var lastSafeY = 0f
     private var safeTimer = 0f
@@ -127,6 +139,8 @@ class GameWorld {
     private var fadeTimer = 0f
     private var hurtFlash = 0f
     var mapOpen = false
+        private set
+    var journalOpen = false
         private set
     private val worldMap = WorldMap(layout)
     private var backdropScene: AreaScene? = null
@@ -172,7 +186,6 @@ class GameWorld {
         worldSpawnX = spawnScene.spawnX
         worldSpawnY = spawnScene.spawnY
         player = Player(x = worldSpawnX, y = worldSpawnY)
-        storyArea = StoryArea(worldSpawnX, worldSpawnY)
         lastSafeX = worldSpawnX
         lastSafeY = worldSpawnY
 
@@ -301,20 +314,39 @@ class GameWorld {
         mapOpen = !mapOpen
     }
 
-    /** Interact with nearby story spirits or the first rune puzzle. */
-    fun interact() {
-        if (!mapOpen && player.state != PlayerState.DEAD) storyArea.interact(player.x, player.y)
+    /** The journal of tasks: who asked for what, and how far along it is. */
+    fun toggleJournal() {
+        journalOpen = !journalOpen
     }
 
-    /** The heal control doubles as Interact, but only when a story object is in reach. */
+    /** Talk to whoever is nearest, press the nearest stone, or skip the line being spoken. */
+    fun interact() {
+        if (!mapOpen && !journalOpen && player.state != PlayerState.DEAD) story.interact(player.x, player.y)
+    }
+
+    /** The heal control doubles as Interact, but only when somebody or something is in reach. */
     fun startHealOrInteract() {
-        if (mapOpen || player.state == PlayerState.DEAD) return
-        if (storyArea.canInteract(player.x, player.y)) {
+        if (mapOpen || journalOpen || player.state == PlayerState.DEAD) return
+        if (story.canInteract(player.x, player.y)) {
             player.stopHeal()
-            storyArea.interact(player.x, player.y)
+            story.interact(player.x, player.y)
         } else {
             player.startHeal()
         }
+    }
+
+    // ---- the stage the story performs on ------------------------------------------
+
+    override fun shake(intensity: Float, seconds: Float) {
+        triggerShake(intensity, seconds)
+    }
+
+    override fun sparks(x: Float, y: Float, count: Int, color: Int) {
+        spawnSparks(x, y, count, color)
+    }
+
+    override fun announce(name: String, sub: String, seconds: Float) {
+        showTitle(name, sub, seconds)
     }
 
     fun triggerShake(intensity: Float, duration: Float) {
@@ -383,8 +415,17 @@ class GameWorld {
         viewW = screenWidth / zoom
         viewH = DESIGN_VIEW_H
         gameTime += dt
-        storyArea.update(dt)
-        if (mapOpen) return
+        story.update(dt, player.x, player.y, discovered.size)
+        val reward = story.drainReward()
+        if (!reward.isEmpty) {
+            if (reward.masks > 0) {
+                player.maxMasks += reward.masks
+                player.currentMasks = player.maxMasks
+                spawnSparks(player.x, player.y - player.height * 0.5f, 26, Color.rgb(255, 232, 160))
+            }
+            if (reward.soul > 0) player.soul = min(player.maxSoul, player.soul + reward.soul)
+        }
+        if (mapOpen || journalOpen) return
 
         if (player.state == PlayerState.DEAD) {
             deathTimer -= dt
@@ -797,7 +838,7 @@ class GameWorld {
             enemy.draw(canvas, paint)
         }
         for (proj in projectiles) proj.draw(canvas, paint)
-        storyArea.drawWorld(canvas, paint, gameTime, view)
+        story.drawWorld(canvas, paint, gameTime, view)
         player.draw(canvas, paint)
         for (s in scenes) if (RectF.intersects(s.bounds, view)) s.drawLights(canvas, paint, view)
 
@@ -828,10 +869,13 @@ class GameWorld {
 
         // 4. screen-space UI
         drawHUD(canvas, paint, screenWidth, screenHeight)
-        storyArea.drawDialogue(canvas, paint, screenWidth, screenHeight)
+        story.drawScreen(canvas, paint, gameTime, screenWidth, screenHeight)
         if (player.state == PlayerState.DEAD) drawDefeatedScreen(canvas, paint, screenWidth, screenHeight)
         if (mapOpen) {
             worldMap.draw(canvas, paint, screenWidth, screenHeight, gameTime, discovered, benches, player.x, player.y, currentScene?.def?.id)
+        }
+        if (journalOpen) {
+            story.drawJournal(canvas, paint, screenWidth, screenHeight)
         }
     }
 

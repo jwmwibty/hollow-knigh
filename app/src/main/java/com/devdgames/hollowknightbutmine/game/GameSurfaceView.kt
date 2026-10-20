@@ -82,6 +82,12 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 }
                 return true
             }
+            KeyEvent.KEYCODE_T -> {
+                if (event.repeatCount == 0) {
+                    world.toggleJournal()
+                }
+                return true
+            }
         }
         return false
     }

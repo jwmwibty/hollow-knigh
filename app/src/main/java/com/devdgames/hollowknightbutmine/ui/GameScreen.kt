@@ -101,6 +101,16 @@ fun GameScreen(
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color(0x88202432))
                         .border(1.dp, Color(0x66A0C0E0), RoundedCornerShape(8.dp))
+                        .clickable { gameViewRef?.world?.toggleJournal() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text("📜 Tasks", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x88202432))
+                        .border(1.dp, Color(0x66A0C0E0), RoundedCornerShape(8.dp))
                         .clickable { gameViewRef?.world?.toggleMap() }
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
