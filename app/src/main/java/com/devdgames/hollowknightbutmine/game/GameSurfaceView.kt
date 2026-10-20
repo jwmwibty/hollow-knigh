@@ -72,6 +72,18 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 }
                 return true
             }
+            KeyEvent.KEYCODE_U -> {
+                if (event.repeatCount == 0) {
+                    world.player.risingCut()
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_I -> {
+                if (event.repeatCount == 0) {
+                    world.player.downstrike()
+                }
+                return true
+            }
             KeyEvent.KEYCODE_F, KeyEvent.KEYCODE_ENTER -> {
                 if (event.repeatCount == 0) world.interact()
                 return true
