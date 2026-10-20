@@ -516,7 +516,6 @@ class Player(
     private fun drawLegsAndBoots(canvas: Canvas, paint: Paint, dir: Float, isFlashing: Boolean) {
         // Each leg is a small two-joint rig: thigh angle, knee bend, ankle position,
         // then a foot that follows the ankle. This is deliberately not one rigid rotating stick.
-        val running = state == PlayerState.RUNNING
         val phase = animationTime * 10f
         val hipY = y - 27f
 
@@ -554,7 +553,7 @@ class Player(
                 }
                 PlayerState.SLASHING, PlayerState.STABBING -> {
                     // A planted, slightly staggered stance sells the weight behind sword attacks.
-                    upperAngle = dir * if (side.toFloat() * dir > 0f) 0.24f else -0.18f
+                    upperAngle = dir * (if (side.toFloat() * dir > 0f) 0.24f else -0.18f)
                     lowerAngle = upperAngle - dir * 0.2f
                 }
                 PlayerState.HURT -> {
