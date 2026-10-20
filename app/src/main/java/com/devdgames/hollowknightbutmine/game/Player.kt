@@ -516,8 +516,10 @@ class Player(
 
         // Dark baggy charcoal ninja pants
         paint.color = if (isFlashing) Color.WHITE else Color.rgb(32, 30, 36)
-        // Two-frame procedural stride: legs swing opposite each other while running.
-        val stride = if (state == PlayerState.RUNNING) sin(animationTime * 17f) * 6f else 0f
+        // Compact alternating footfalls: keep the legs close to the body, not galloping.
+        val stride = if (state == PlayerState.RUNNING) sin(animationTime * 10f) * 1.8f else 0f
+        val leftStepLift = if (state == PlayerState.RUNNING) max(0f, sin(animationTime * 10f)) * 2f else 0f
+        val rightStepLift = if (state == PlayerState.RUNNING) max(0f, sin(animationTime * 10f + Math.PI.toFloat())) * 2f else 0f
         val doubleJumpTuck = if (doubleJumpBurstTimer > 0f) sin((doubleJumpBurstTimer / 0.24f) * Math.PI).toFloat() * 10f else 0f
         val airborneTuck = when {
             state == PlayerState.DASHING -> 6f
@@ -529,10 +531,10 @@ class Player(
         }
         // Legs pivot at the hips. Each boot follows its own leg so the feet never
         // float separately while the running stride swings.
-        val leftLegX = x - 7f - stride
-        val rightLegX = x + 7f + stride
-        val leftFootY = y - 9f + airborneTuck
-        val rightFootY = y - 9f - airborneTuck
+        val leftLegX = x - 4.5f - stride
+        val rightLegX = x + 4.5f + stride
+        val leftFootY = y - 9f + airborneTuck - leftStepLift
+        val rightFootY = y - 9f - airborneTuck - rightStepLift
         canvas.drawRoundRect(leftLegX - 4f, y - 27f + airborneTuck, leftLegX + 4f, leftFootY, 3.5f, 3.5f, paint)
         canvas.drawRoundRect(rightLegX - 4f, y - 27f - airborneTuck, rightLegX + 4f, rightFootY, 3.5f, 3.5f, paint)
 
